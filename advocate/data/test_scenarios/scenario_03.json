@@ -1,0 +1,5 @@
+{
+  "case_id": "scenario_03",
+  "ground_truth_outcome": "employee_wins",
+  "case_brief": "David Chen, a 29-year-old software engineer at TechNova Inc., was terminated two weeks after reporting to the company's ethics hotline that his manager was instructing the team to falsify safety test results for a medical device software product. Chen made the report in good faith based on documented irregularities he observed over three months. The company claims termination was due to 'performance issues' and 'inability to meet deadlines.' Chen's performance reviews prior to the ethics report were consistently rated 3.8 out of 5 — meeting expectations. The manager Chen reported was later found by internal investigation to have indeed falsified test data, though this finding came after Chen's termination. The termination letter was signed by the same manager Chen had reported. TechNova is a federal government contractor. Chen is employed in Texas (5th Circuit) under an at-will agreement. The time gap between the protected disclosure and termination is 14 days."
+}

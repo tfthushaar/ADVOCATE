@@ -1,0 +1,5 @@
+{
+  "case_id": "scenario_02",
+  "ground_truth_outcome": "employer_wins",
+  "case_brief": "James Whitfield, a 34-year-old sales manager at Axiom Financial Services, was terminated after 3 years of employment. The stated reason was repeated violations of company expense policy. Over 18 months, Whitfield submitted 23 expense reports later found to contain personal expenses totaling $14,200 falsely categorized as client entertainment. The company conducted a full audit after an anonymous tip, found documentary evidence of the violations, gave Whitfield an opportunity to respond, and he admitted to 'some errors in categorization.' Company policy explicitly states that falsification of expense reports is grounds for immediate termination. Whitfield claims the termination was actually motivated by his recent disability accommodation request for a standing desk and adjusted meeting schedule due to a back condition. However, the company approved his accommodation request in full two weeks before discovering the expense fraud. Whitfield is employed at-will in Illinois (7th Circuit). No protected activity occurred within 12 months prior to termination."
+}

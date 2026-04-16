@@ -1,0 +1,5 @@
+{
+  "case_id": "scenario_08",
+  "ground_truth_outcome": "employer_wins",
+  "case_brief": "Sandra Kim, a 31-year-old financial analyst at Veridian Capital, was terminated for cause after posting confidential client portfolio data on a public investment forum. Kim claims she did not know the data was confidential, despite having signed a confidentiality agreement at hire and again at her most recent annual review (three months before the incident). The post included client names, portfolio compositions, and projected returns — information explicitly listed as Category 1 Confidential in Veridian's data classification policy, which Kim had been trained on twice. The company discovered the post when a client's attorney notified them. The client suffered reputational harm. Kim claims the company treated her more harshly than a male colleague who had a minor data handling violation the prior year. The comparison incident involved mislabeling an internal presentation, not publicly disclosing client data. Kim is employed at-will in Massachusetts (1st Circuit). No protected class discrimination is alleged beyond gender."
+}
