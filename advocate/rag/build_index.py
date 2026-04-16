@@ -48,10 +48,27 @@ def fetch_opinions(max_results: int = TARGET_OPINIONS) -> list[dict]:
         "order_by": "score desc",
         "page_size": 20,
     }
+    token = os.getenv("COURTLISTENER_API_TOKEN", "")
     headers = {"User-Agent": "ADVOCATE-Research-Tool/1.0"}
+    if token:
+        headers["Authorization"] = f"Token {token}"
+    else:
+        print(
+            "\n[build_index] WARNING: COURTLISTENER_API_TOKEN not set.\n"
+            "  CourtListener REST API v4 requires a free account token.\n"
+            "  1. Register at https://www.courtlistener.com/sign-in/\n"
+            "  2. Get your token at https://www.courtlistener.com/api/rest/v4/\n"
+            "  3. Add COURTLISTENER_API_TOKEN=<token> to your .env file\n"
+        )
 
     while url and len(opinions) < max_results:
         resp = requests.get(url, params=params, headers=headers, timeout=30)
+        if resp.status_code == 401:
+            raise RuntimeError(
+                "CourtListener returned 401 Unauthorized.\n"
+                "Register for a free account at https://www.courtlistener.com/sign-in/\n"
+                "then add COURTLISTENER_API_TOKEN=<your_token> to your .env file."
+            )
         resp.raise_for_status()
         data = resp.json()
         results = data.get("results", [])
