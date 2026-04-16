@@ -213,12 +213,18 @@ AVAILABLE_MODELS: dict[str, dict] = {
         "env_key": "ANTHROPIC_API_KEY",
         "description": "Anthropic fastest, most compact model",
     },
-    # Google Gemini
+    # Google Gemini — use names exactly as returned by genai.list_models()
     "gemini-2.0-flash": {
         "provider": "Google",
         "display": "Gemini 2.0 Flash",
         "env_key": "GOOGLE_API_KEY",
-        "description": "Google fast multimodal model",
+        "description": "Google latest fast multimodal model",
+    },
+    "gemini-2.0-flash-lite": {
+        "provider": "Google",
+        "display": "Gemini 2.0 Flash Lite",
+        "env_key": "GOOGLE_API_KEY",
+        "description": "Google lightest, fastest model",
     },
     "gemini-1.5-pro": {
         "provider": "Google",
@@ -226,7 +232,7 @@ AVAILABLE_MODELS: dict[str, dict] = {
         "env_key": "GOOGLE_API_KEY",
         "description": "Google high-capability long-context model",
     },
-    "gemini-1.5-flash": {
+    "gemini-1.5-flash-latest": {
         "provider": "Google",
         "display": "Gemini 1.5 Flash",
         "env_key": "GOOGLE_API_KEY",
@@ -245,3 +251,24 @@ def is_model_available(model_id: str) -> bool:
     if not info:
         return False
     return bool(os.getenv(info["env_key"]))
+
+
+def list_gemini_models() -> list[str]:
+    """
+    Query the Gemini API and return names of models that support generateContent.
+    Useful for debugging — call this to find valid model IDs for the current API key.
+    Returns [] if GOOGLE_API_KEY is not set or the call fails.
+    """
+    try:
+        import google.generativeai as genai
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            return []
+        genai.configure(api_key=api_key)
+        return [
+            m.name.replace("models/", "")
+            for m in genai.list_models()
+            if "generateContent" in m.supported_generation_methods
+        ]
+    except Exception:
+        return []

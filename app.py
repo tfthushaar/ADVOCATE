@@ -84,12 +84,32 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"Build failed: {e}")
 
+    # Show which Gemini models are actually accessible with the current key
+    if google_key:
+        st.divider()
+        st.markdown("### Available Gemini Models")
+        if st.button("List models for my key", use_container_width=True):
+            with st.spinner("Querying Gemini API…"):
+                try:
+                    from advocate.llm.client import list_gemini_models
+                    available_gemini = list_gemini_models()
+                    if available_gemini:
+                        st.session_state["gemini_models"] = available_gemini
+                    else:
+                        st.warning("No models found — check your GOOGLE_API_KEY.")
+                except Exception as e:
+                    st.error(f"Could not list models: {e}")
+
+        if "gemini_models" in st.session_state:
+            for m in st.session_state["gemini_models"]:
+                st.caption(f"• {m}")
+
     st.divider()
     st.markdown("""
 **Providers supported**
 - 🟢 OpenAI: GPT-4o, GPT-4o Mini, GPT-4 Turbo
 - 🟠 Anthropic: Claude Sonnet/Opus/Haiku
-- 🔵 Google: Gemini 2.0 Flash, 1.5 Pro/Flash
+- 🔵 Google: Gemini 2.0 Flash / Flash Lite, 1.5 Pro / Flash
 
 Pipeline: LangGraph · RAG: CourtListener + ChromaDB
 """)
