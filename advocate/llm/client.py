@@ -6,7 +6,7 @@ Supported models:
   OpenAI   : gpt-4o, gpt-4o-mini, gpt-4-turbo, o1-*, o3-*
   Anthropic: claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5-20251001
   Google   : gemini-2.0-flash, gemini-1.5-pro, gemini-1.5-flash
-             (uses Google's OpenAI-compatible endpoint — no extra SDK needed)
+             (uses the native google-generativeai SDK)
 
 Environment variables required per provider:
   OPENAI_API_KEY
@@ -29,7 +29,6 @@ OPENAI_MODELS = {
 
 ANTHROPIC_PREFIX = "claude"
 GEMINI_PREFIX = "gemini"
-GOOGLE_OPENAI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 
 def _is_openai(model: str) -> bool:
@@ -124,19 +123,53 @@ def _anthropic_completion(messages: list[dict], model: str, max_tokens: int) -> 
 
 def _gemini_completion(messages: list[dict], model: str, max_tokens: int) -> str:
     """
-    Uses Google's OpenAI-compatible endpoint — no google-generativeai SDK needed.
+    Uses the native google-generativeai SDK.
+    Converts the standard {role, content} message list into Gemini's format:
+      - "system" role → system_instruction on the model
+      - "user" / "assistant" turns → chat history
     """
-    from openai import OpenAI
+    import google.generativeai as genai
+    from google.generativeai.types import GenerationConfig
+
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         raise ValueError("GOOGLE_API_KEY is not set.")
-    client = OpenAI(api_key=api_key, base_url=GOOGLE_OPENAI_BASE)
-    response = client.chat.completions.create(
-        model=model,
-        max_tokens=max_tokens,
-        messages=messages,
+
+    genai.configure(api_key=api_key)
+
+    # Extract system instruction and build history + final user message
+    system_instruction = None
+    history = []
+    last_user_msg = ""
+
+    for m in messages:
+        role = m["role"]
+        content = m["content"]
+        if role == "system":
+            system_instruction = content
+        elif role == "user":
+            last_user_msg = content
+            # Add previous user turns to history if there are assistant responses after them
+        elif role == "assistant":
+            # Pair the preceding user message into history as a completed turn
+            if last_user_msg:
+                history.append({"role": "user", "parts": [last_user_msg]})
+                last_user_msg = ""
+            history.append({"role": "model", "parts": [content]})
+
+    gemini_model = genai.GenerativeModel(
+        model_name=model,
+        system_instruction=system_instruction,
+        generation_config=GenerationConfig(max_output_tokens=max_tokens),
     )
-    return response.choices[0].message.content.strip()
+
+    if history:
+        chat = gemini_model.start_chat(history=history)
+        response = chat.send_message(last_user_msg)
+    else:
+        response = gemini_model.generate_content(last_user_msg)
+
+    return response.text.strip()
 
 
 # ─── Model catalogue (for UI) ─────────────────────────────────────────────────

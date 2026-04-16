@@ -29,29 +29,36 @@ def _get_model() -> SentenceTransformer:
 
 
 def _get_collection():
+    """Return the ChromaDB collection, or None if the index has not been built yet."""
     global _collection
     if _collection is None:
-        client = chromadb.PersistentClient(path=CHROMA_PATH)
-        _collection = client.get_collection(COLLECTION_NAME)
+        try:
+            client = chromadb.PersistentClient(path=CHROMA_PATH)
+            _collection = client.get_collection(COLLECTION_NAME)
+        except Exception:
+            # Collection doesn't exist yet — index needs to be built first.
+            return None
     return _collection
+
+
+def index_ready() -> bool:
+    """Return True if the ChromaDB index exists and has documents."""
+    return _get_collection() is not None
 
 
 def retrieve(query: str, n_results: int = 5, side: str = "") -> list[dict]:
     """
     Semantic search over the ChromaDB index.
 
-    Args:
-        query:     Natural language query string.
-        n_results: Number of top chunks to return.
-        side:      Optional label ("employer" | "employee") — used only for logging.
-
-    Returns:
-        List of dicts: {text, case_name, citation, court, date_filed, url, score}
-        score is cosine similarity (0–1); higher = more relevant.
+    Returns an empty list (rather than raising) if the index has not been built yet.
+    Each result: {text, case_name, citation, court, date_filed, url, score}
+    score is cosine similarity (0–1); higher = more relevant.
     """
-    model = _get_model()
     collection = _get_collection()
+    if collection is None:
+        return []   # RAG index not built — agents will run without grounding
 
+    model = _get_model()
     query_embedding = model.encode([query])[0].tolist()
     results = collection.query(
         query_embeddings=[query_embedding],
