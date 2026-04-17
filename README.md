@@ -120,12 +120,18 @@ Fetches 60–80 US federal employment wrongful termination opinions from CourtLi
 python -m advocate.rag.build_index
 ```
 
-### 4. Launch the Research Dashboard
+### 4. Launch the Streaming Apps
 
+**Option A: The Research Dashboard**  
 Explore the visually rich, dark-themed analysis of 50 simulated scenarios:
-
 ```bash
 streamlit run app.py
+```
+
+**Option B: The Multi-Model Simulation Tool**  
+Run live predictions, test custom case briefs, and benchmark different models:
+```bash
+streamlit run app_simulation.py
 ```
 
 ### 5. Run the batch generation hook (optional)
@@ -162,6 +168,7 @@ advocate/
     ├── compare_models.py   # Multi-model comparison runner + composite ranking
     └── validate.py         # Wilcoxon validation harness
 app.py                      # Streamlit Research Dashboard
+app_simulation.py           # Streamlit Multi-Model Simulation Tool
 run_batch_anthropic.py      # Hook to execute 50-scenario evaluation pipeline
 anthropic_research_results.json # Generated 50-scenario Claude data
 requirements.txt
@@ -170,9 +177,12 @@ requirements.txt
 
 ---
 
-## Research Dashboard
+## Dashboards & UIs
 
-The main `app.py` Streamlit application is a rich, dark-themed dashboard built to explore the structured Anthropic Claude Sonnet 4.6 batched validation data (`anthropic_research_results.json`). 
+The project contains two distinct user interfaces.
+
+### 1. Research Dashboard (`app.py`)
+A rich, dark-themed dashboard built to explore the structured Anthropic Claude Sonnet 4.6 batched validation data (`anthropic_research_results.json`).
 
 | Tab | Description |
 |---|---|
@@ -182,6 +192,15 @@ The main `app.py` Streamlit application is a rich, dark-themed dashboard built t
 | **✅ Rule Validity** | Scenario-level breakdown of the 94.5% mean legal citation validity rate. |
 | **🗂️ Per-Scenario** | Comprehensive data table and heatmap visualization of all 50 test cases. |
 | **🔍 Interpretation** | Synthesized AI-quality legal and statistical findings from the SVI validation study. |
+
+### 2. Multi-Model Simulation Tool (`app_simulation.py`)
+The original interactive simulator that allows you to provide custom test cases, hook up real API keys, and run multi-agent adversarial battles live.
+
+| Tab | Description |
+|---|---|
+| **Single Model Run** | Run the pipeline with one model; see full argument detail + gap report. |
+| **Multi-Model Comparison** | Select 2–9 models, run the same case, and compare them on all metrics with charts and rankings. |
+| **Batch Validation** | Run all 10 test scenarios locally to compute Wilcoxon tests for SVI validity on the fly. |
 
 ---
 
