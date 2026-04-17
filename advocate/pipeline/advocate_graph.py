@@ -129,7 +129,7 @@ def run_pipeline(case_brief: str, model: str | None = None) -> AdvocateState:
         model:      LLM model ID for all agents. Defaults to ADVOCATE_MODEL env var.
     """
     import os
-    model = model or os.getenv("ADVOCATE_MODEL", "gpt-4o")
+    model = model or os.getenv("ADVOCATE_MODEL", "claude-sonnet-4-6")
     graph = build_graph()
     initial: AdvocateState = {
         "case_brief": case_brief,

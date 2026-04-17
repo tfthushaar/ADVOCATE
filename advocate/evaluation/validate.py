@@ -98,7 +98,7 @@ def run_validation(scenarios_dir: str = "./advocate/data/test_scenarios") -> dic
             wilcoxon_result = {
                 "statistic": round(float(stat), 4),
                 "p_value": round(float(p_value), 4),
-                "significant": p_value < 0.05,
+                "significant": bool(p_value < 0.05),
                 "n_pairs": len(loser_svis),
                 "mean_loser_svi": round(sum(loser_svis) / len(loser_svis), 2),
                 "mean_winner_svi": round(sum(winner_svis) / len(winner_svis), 2),

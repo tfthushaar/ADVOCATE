@@ -12,7 +12,7 @@ from advocate.llm.client import chat_completion
 
 load_dotenv()
 
-DEFAULT_MODEL = os.getenv("ADVOCATE_MODEL", "gpt-4o")
+DEFAULT_MODEL = os.getenv("ADVOCATE_MODEL", "claude-sonnet-4-6")
 
 GAP_SYSTEM_PROMPT = """You are a senior legal strategy consultant.
 You have been given the IRAC-scored arguments from both sides of an employment wrongful termination case.

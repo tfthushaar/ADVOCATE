@@ -13,7 +13,7 @@ from advocate.rag.retriever import retrieve
 
 load_dotenv()
 
-DEFAULT_MODEL = os.getenv("ADVOCATE_MODEL", "gpt-4o")
+DEFAULT_MODEL = os.getenv("ADVOCATE_MODEL", "claude-sonnet-4-6")
 
 SYSTEM_PROMPT = """You are a senior employment defense attorney with 20 years of experience.
 Your client is the EMPLOYER (defendant) in a wrongful termination lawsuit.

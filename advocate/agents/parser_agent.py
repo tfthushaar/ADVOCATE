@@ -10,7 +10,7 @@ from advocate.llm.client import chat_completion
 
 load_dotenv()
 
-DEFAULT_MODEL = os.getenv("ADVOCATE_MODEL", "gpt-4o")
+DEFAULT_MODEL = os.getenv("ADVOCATE_MODEL", "claude-sonnet-4-6")
 
 SYSTEM_PROMPT = """You are a precise legal case parser specialising in US employment law.
 Your task is to extract structured information from free-text case briefs about wrongful termination.

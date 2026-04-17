@@ -1,0 +1,877 @@
+{
+  "n_scenarios": 50,
+  "n_successful": 50,
+  "batch_metrics": {
+    "outcome_alignment_pct": 94.0,
+    "summary_stats": {
+      "mean_divergence": 0.122,
+      "mean_rule_validity_rate": 94.5
+    },
+    "svi_by_case": {
+      "scenario_01": {
+        "employer_svi": 22.9,
+        "employee_svi": 31.5
+      },
+      "scenario_02": {
+        "employee_svi": 18.6,
+        "employer_svi": 45.3
+      },
+      "scenario_03": {
+        "employer_svi": 0.0,
+        "employee_svi": 31.8
+      },
+      "scenario_04": {
+        "employer_svi": 26.1,
+        "employee_svi": 61.8
+      },
+      "scenario_05": {
+        "employer_svi": 22.6,
+        "employee_svi": 25.7
+      },
+      "scenario_06": {
+        "employee_svi": 21.7,
+        "employer_svi": 44.8
+      },
+      "scenario_07": {
+        "employee_svi": 12.9,
+        "employer_svi": 60.7
+      },
+      "scenario_08": {
+        "employer_svi": 14.9,
+        "employee_svi": 55.7
+      },
+      "scenario_09": {
+        "employer_svi": 15.0,
+        "employee_svi": 56.3
+      },
+      "scenario_10": {
+        "employer_svi": 32.7,
+        "employee_svi": 29.1
+      },
+      "scenario_11": {
+        "employer_svi": 18.0,
+        "employee_svi": 51.2
+      },
+      "scenario_12": {
+        "employee_svi": 26.5,
+        "employer_svi": 51.1
+      },
+      "scenario_13": {
+        "employer_svi": 17.3,
+        "employee_svi": 56.2
+      },
+      "scenario_14": {
+        "employer_svi": 20.3,
+        "employee_svi": 35.9
+      },
+      "scenario_15": {
+        "employer_svi": 10.3,
+        "employee_svi": 31.9
+      },
+      "scenario_16": {
+        "employer_svi": 28.0,
+        "employee_svi": 19.0
+      },
+      "scenario_17": {
+        "employer_svi": 25.2,
+        "employee_svi": 33.2
+      },
+      "scenario_18": {
+        "employer_svi": 13.0,
+        "employee_svi": 30.5
+      },
+      "scenario_19": {
+        "employer_svi": 8.7,
+        "employee_svi": 18.1
+      },
+      "scenario_20": {
+        "employee_svi": 10.0,
+        "employer_svi": 56.3
+      },
+      "scenario_21": {
+        "employee_svi": 13.2,
+        "employer_svi": 31.0
+      },
+      "scenario_22": {
+        "employer_svi": 15.7,
+        "employee_svi": 11.4
+      },
+      "scenario_23": {
+        "employee_svi": 10.3,
+        "employer_svi": 43.5
+      },
+      "scenario_24": {
+        "employer_svi": 29.6,
+        "employee_svi": 50.8
+      },
+      "scenario_25": {
+        "employee_svi": 24.6,
+        "employer_svi": 38.3
+      },
+      "scenario_26": {
+        "employer_svi": 28.6,
+        "employee_svi": 42.7
+      },
+      "scenario_27": {
+        "employer_svi": 3.4,
+        "employee_svi": 49.4
+      },
+      "scenario_28": {
+        "employer_svi": 13.0,
+        "employee_svi": 56.7
+      },
+      "scenario_29": {
+        "employer_svi": 25.7,
+        "employee_svi": 37.7
+      },
+      "scenario_30": {
+        "employer_svi": 0.0,
+        "employee_svi": 34.9
+      },
+      "scenario_31": {
+        "employee_svi": 13.4,
+        "employer_svi": 18.7
+      },
+      "scenario_32": {
+        "employee_svi": 14.5,
+        "employer_svi": 48.0
+      },
+      "scenario_33": {
+        "employer_svi": 12.6,
+        "employee_svi": 30.7
+      },
+      "scenario_34": {
+        "employer_svi": 12.2,
+        "employee_svi": 66.5
+      },
+      "scenario_35": {
+        "employer_svi": 24.2,
+        "employee_svi": 53.6
+      },
+      "scenario_36": {
+        "employer_svi": 25.6,
+        "employee_svi": 26.9
+      },
+      "scenario_37": {
+        "employee_svi": 7.4,
+        "employer_svi": 59.8
+      },
+      "scenario_38": {
+        "employer_svi": 24.4,
+        "employee_svi": 26.5
+      },
+      "scenario_39": {
+        "employee_svi": 10.5,
+        "employer_svi": 34.8
+      },
+      "scenario_40": {
+        "employer_svi": 8.3,
+        "employee_svi": 8.4
+      },
+      "scenario_41": {
+        "employee_svi": 1.1,
+        "employer_svi": 45.6
+      },
+      "scenario_42": {
+        "employer_svi": 10.3,
+        "employee_svi": 52.1
+      },
+      "scenario_43": {
+        "employee_svi": 30.5,
+        "employer_svi": 63.9
+      },
+      "scenario_44": {
+        "employer_svi": 16.3,
+        "employee_svi": 35.7
+      },
+      "scenario_45": {
+        "employee_svi": 17.7,
+        "employer_svi": 32.1
+      },
+      "scenario_46": {
+        "employer_svi": 13.8,
+        "employee_svi": 73.1
+      },
+      "scenario_47": {
+        "employer_svi": 7.3,
+        "employee_svi": 35.3
+      },
+      "scenario_48": {
+        "employer_svi": 15.4,
+        "employee_svi": 64.8
+      },
+      "scenario_49": {
+        "employer_svi": 14.8,
+        "employee_svi": 18.5
+      },
+      "scenario_50": {
+        "employer_svi": 10.6,
+        "employee_svi": 24.6
+      }
+    },
+    "divergence_by_case": {
+      "scenario_01": 0.104,
+      "scenario_02": 0.038,
+      "scenario_03": 0.163,
+      "scenario_04": 0.122,
+      "scenario_05": 0.08,
+      "scenario_06": 0.028,
+      "scenario_07": 0.146,
+      "scenario_08": 0.164,
+      "scenario_09": 0.123,
+      "scenario_10": 0.039,
+      "scenario_11": 0.097,
+      "scenario_12": 0.118,
+      "scenario_13": 0.104,
+      "scenario_14": 0.056,
+      "scenario_15": 0.139,
+      "scenario_16": 0.114,
+      "scenario_17": 0.08,
+      "scenario_18": 0.139,
+      "scenario_19": 0.19,
+      "scenario_20": 0.105,
+      "scenario_21": 0.159,
+      "scenario_22": 0.093,
+      "scenario_23": 0.133,
+      "scenario_24": 0.185,
+      "scenario_25": 0.106,
+      "scenario_26": 0.147,
+      "scenario_27": 0.098,
+      "scenario_28": 0.175,
+      "scenario_29": 0.13,
+      "scenario_30": 0.242,
+      "scenario_31": 0.151,
+      "scenario_32": 0.078,
+      "scenario_33": 0.184,
+      "scenario_34": 0.052,
+      "scenario_35": 0.093,
+      "scenario_36": 0.108,
+      "scenario_37": 0.119,
+      "scenario_38": 0.137,
+      "scenario_39": 0.078,
+      "scenario_40": 0.194,
+      "scenario_41": 0.141,
+      "scenario_42": 0.087,
+      "scenario_43": 0.148,
+      "scenario_44": 0.109,
+      "scenario_45": 0.157,
+      "scenario_46": 0.094,
+      "scenario_47": 0.145,
+      "scenario_48": 0.139,
+      "scenario_49": 0.117,
+      "scenario_50": 0.163
+    },
+    "rule_validity_by_case": {
+      "scenario_01": 98.4,
+      "scenario_02": 90.7,
+      "scenario_03": 95.0,
+      "scenario_04": 98.3,
+      "scenario_05": 92.3,
+      "scenario_06": 88.5,
+      "scenario_07": 100.0,
+      "scenario_08": 97.5,
+      "scenario_09": 92.5,
+      "scenario_10": 99.1,
+      "scenario_11": 91.5,
+      "scenario_12": 91.8,
+      "scenario_13": 97.0,
+      "scenario_14": 92.1,
+      "scenario_15": 92.7,
+      "scenario_16": 97.1,
+      "scenario_17": 93.0,
+      "scenario_18": 100.0,
+      "scenario_19": 94.0,
+      "scenario_20": 92.9,
+      "scenario_21": 97.2,
+      "scenario_22": 97.7,
+      "scenario_23": 87.1,
+      "scenario_24": 93.9,
+      "scenario_25": 100.0,
+      "scenario_26": 89.4,
+      "scenario_27": 94.1,
+      "scenario_28": 100.0,
+      "scenario_29": 100.0,
+      "scenario_30": 93.4,
+      "scenario_31": 95.6,
+      "scenario_32": 96.4,
+      "scenario_33": 99.2,
+      "scenario_34": 95.0,
+      "scenario_35": 94.9,
+      "scenario_36": 91.1,
+      "scenario_37": 89.0,
+      "scenario_38": 89.9,
+      "scenario_39": 95.8,
+      "scenario_40": 91.0,
+      "scenario_41": 100.0,
+      "scenario_42": 100.0,
+      "scenario_43": 97.9,
+      "scenario_44": 96.2,
+      "scenario_45": 93.8,
+      "scenario_46": 84.2,
+      "scenario_47": 85.1,
+      "scenario_48": 96.3,
+      "scenario_49": 100.0,
+      "scenario_50": 84.5
+    }
+  },
+  "wilcoxon_test": {
+    "statistic": 1252.0,
+    "p_value": 5.684e-13,
+    "significant": true,
+    "n_pairs": 50,
+    "mean_loser_svi": 40.8,
+    "mean_winner_svi": 16.4
+  },
+  "per_case_results": [
+    {
+      "case_id": "scenario_01",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 22.9,
+        "employee_svi": 31.5
+      },
+      "divergence": 0.104,
+      "rule_validity_rate": 98.4,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_02",
+      "ground_truth": "employee_wins",
+      "svi": {
+        "employee_svi": 18.6,
+        "employer_svi": 45.3
+      },
+      "divergence": 0.038,
+      "rule_validity_rate": 90.7,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_03",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 0.0,
+        "employee_svi": 31.8
+      },
+      "divergence": 0.163,
+      "rule_validity_rate": 95.0,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_04",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 26.1,
+        "employee_svi": 61.8
+      },
+      "divergence": 0.122,
+      "rule_validity_rate": 98.3,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_05",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 22.6,
+        "employee_svi": 25.7
+      },
+      "divergence": 0.08,
+      "rule_validity_rate": 92.3,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_06",
+      "ground_truth": "employee_wins",
+      "svi": {
+        "employee_svi": 21.7,
+        "employer_svi": 44.8
+      },
+      "divergence": 0.028,
+      "rule_validity_rate": 88.5,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_07",
+      "ground_truth": "employee_wins",
+      "svi": {
+        "employee_svi": 12.9,
+        "employer_svi": 60.7
+      },
+      "divergence": 0.146,
+      "rule_validity_rate": 100.0,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_08",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 14.9,
+        "employee_svi": 55.7
+      },
+      "divergence": 0.164,
+      "rule_validity_rate": 97.5,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_09",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 15.0,
+        "employee_svi": 56.3
+      },
+      "divergence": 0.123,
+      "rule_validity_rate": 92.5,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_10",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 32.7,
+        "employee_svi": 29.1
+      },
+      "divergence": 0.039,
+      "rule_validity_rate": 99.1,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_11",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 18.0,
+        "employee_svi": 51.2
+      },
+      "divergence": 0.097,
+      "rule_validity_rate": 91.5,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_12",
+      "ground_truth": "employee_wins",
+      "svi": {
+        "employee_svi": 26.5,
+        "employer_svi": 51.1
+      },
+      "divergence": 0.118,
+      "rule_validity_rate": 91.8,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_13",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 17.3,
+        "employee_svi": 56.2
+      },
+      "divergence": 0.104,
+      "rule_validity_rate": 97.0,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_14",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 20.3,
+        "employee_svi": 35.9
+      },
+      "divergence": 0.056,
+      "rule_validity_rate": 92.1,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_15",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 10.3,
+        "employee_svi": 31.9
+      },
+      "divergence": 0.139,
+      "rule_validity_rate": 92.7,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_16",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 28.0,
+        "employee_svi": 19.0
+      },
+      "divergence": 0.114,
+      "rule_validity_rate": 97.1,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_17",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 25.2,
+        "employee_svi": 33.2
+      },
+      "divergence": 0.08,
+      "rule_validity_rate": 93.0,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_18",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 13.0,
+        "employee_svi": 30.5
+      },
+      "divergence": 0.139,
+      "rule_validity_rate": 100.0,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_19",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 8.7,
+        "employee_svi": 18.1
+      },
+      "divergence": 0.19,
+      "rule_validity_rate": 94.0,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_20",
+      "ground_truth": "employee_wins",
+      "svi": {
+        "employee_svi": 10.0,
+        "employer_svi": 56.3
+      },
+      "divergence": 0.105,
+      "rule_validity_rate": 92.9,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_21",
+      "ground_truth": "employee_wins",
+      "svi": {
+        "employee_svi": 13.2,
+        "employer_svi": 31.0
+      },
+      "divergence": 0.159,
+      "rule_validity_rate": 97.2,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_22",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 15.7,
+        "employee_svi": 11.4
+      },
+      "divergence": 0.093,
+      "rule_validity_rate": 97.7,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_23",
+      "ground_truth": "employee_wins",
+      "svi": {
+        "employee_svi": 10.3,
+        "employer_svi": 43.5
+      },
+      "divergence": 0.133,
+      "rule_validity_rate": 87.1,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_24",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 29.6,
+        "employee_svi": 50.8
+      },
+      "divergence": 0.185,
+      "rule_validity_rate": 93.9,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_25",
+      "ground_truth": "employee_wins",
+      "svi": {
+        "employee_svi": 24.6,
+        "employer_svi": 38.3
+      },
+      "divergence": 0.106,
+      "rule_validity_rate": 100.0,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_26",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 28.6,
+        "employee_svi": 42.7
+      },
+      "divergence": 0.147,
+      "rule_validity_rate": 89.4,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_27",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 3.4,
+        "employee_svi": 49.4
+      },
+      "divergence": 0.098,
+      "rule_validity_rate": 94.1,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_28",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 13.0,
+        "employee_svi": 56.7
+      },
+      "divergence": 0.175,
+      "rule_validity_rate": 100.0,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_29",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 25.7,
+        "employee_svi": 37.7
+      },
+      "divergence": 0.13,
+      "rule_validity_rate": 100.0,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_30",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 0.0,
+        "employee_svi": 34.9
+      },
+      "divergence": 0.242,
+      "rule_validity_rate": 93.4,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_31",
+      "ground_truth": "employee_wins",
+      "svi": {
+        "employee_svi": 13.4,
+        "employer_svi": 18.7
+      },
+      "divergence": 0.151,
+      "rule_validity_rate": 95.6,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_32",
+      "ground_truth": "employee_wins",
+      "svi": {
+        "employee_svi": 14.5,
+        "employer_svi": 48.0
+      },
+      "divergence": 0.078,
+      "rule_validity_rate": 96.4,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_33",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 12.6,
+        "employee_svi": 30.7
+      },
+      "divergence": 0.184,
+      "rule_validity_rate": 99.2,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_34",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 12.2,
+        "employee_svi": 66.5
+      },
+      "divergence": 0.052,
+      "rule_validity_rate": 95.0,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_35",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 24.2,
+        "employee_svi": 53.6
+      },
+      "divergence": 0.093,
+      "rule_validity_rate": 94.9,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_36",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 25.6,
+        "employee_svi": 26.9
+      },
+      "divergence": 0.108,
+      "rule_validity_rate": 91.1,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_37",
+      "ground_truth": "employee_wins",
+      "svi": {
+        "employee_svi": 7.4,
+        "employer_svi": 59.8
+      },
+      "divergence": 0.119,
+      "rule_validity_rate": 89.0,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_38",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 24.4,
+        "employee_svi": 26.5
+      },
+      "divergence": 0.137,
+      "rule_validity_rate": 89.9,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_39",
+      "ground_truth": "employee_wins",
+      "svi": {
+        "employee_svi": 10.5,
+        "employer_svi": 34.8
+      },
+      "divergence": 0.078,
+      "rule_validity_rate": 95.8,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_40",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 8.3,
+        "employee_svi": 8.4
+      },
+      "divergence": 0.194,
+      "rule_validity_rate": 91.0,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_41",
+      "ground_truth": "employee_wins",
+      "svi": {
+        "employee_svi": 1.1,
+        "employer_svi": 45.6
+      },
+      "divergence": 0.141,
+      "rule_validity_rate": 100.0,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_42",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 10.3,
+        "employee_svi": 52.1
+      },
+      "divergence": 0.087,
+      "rule_validity_rate": 100.0,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_43",
+      "ground_truth": "employee_wins",
+      "svi": {
+        "employee_svi": 30.5,
+        "employer_svi": 63.9
+      },
+      "divergence": 0.148,
+      "rule_validity_rate": 97.9,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_44",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 16.3,
+        "employee_svi": 35.7
+      },
+      "divergence": 0.109,
+      "rule_validity_rate": 96.2,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_45",
+      "ground_truth": "employee_wins",
+      "svi": {
+        "employee_svi": 17.7,
+        "employer_svi": 32.1
+      },
+      "divergence": 0.157,
+      "rule_validity_rate": 93.8,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_46",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 13.8,
+        "employee_svi": 73.1
+      },
+      "divergence": 0.094,
+      "rule_validity_rate": 84.2,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_47",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 7.3,
+        "employee_svi": 35.3
+      },
+      "divergence": 0.145,
+      "rule_validity_rate": 85.1,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_48",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 15.4,
+        "employee_svi": 64.8
+      },
+      "divergence": 0.139,
+      "rule_validity_rate": 96.3,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_49",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 14.8,
+        "employee_svi": 18.5
+      },
+      "divergence": 0.117,
+      "rule_validity_rate": 100.0,
+      "errors": []
+    },
+    {
+      "case_id": "scenario_50",
+      "ground_truth": "employer_wins",
+      "svi": {
+        "employer_svi": 10.6,
+        "employee_svi": 24.6
+      },
+      "divergence": 0.163,
+      "rule_validity_rate": 84.5,
+      "errors": []
+    }
+  ]
+}

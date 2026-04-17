@@ -16,7 +16,32 @@ Environment variables required per provider:
 
 import os
 import time
+import random
+import functools
 from dotenv import load_dotenv
+
+def with_retry_and_backoff(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        max_retries = 5
+        base_delay = 10
+        for attempt in range(max_retries):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                err_str = str(e).lower()
+                is_rate_limit = any(kw in err_str for kw in ["429", "rate limit", "resource exhausted", "quota", "too many requests", "503", "502"])
+                if is_rate_limit and attempt < max_retries - 1:
+                    sleep_time = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                    # Extract model name for logging
+                    model_arg = kwargs.get('model')
+                    if not model_arg and len(args) > 1:
+                        model_arg = args[1]
+                    print(f"[Rate Limit] Hit. Retrying {model_arg} in {sleep_time:.1f}s (Attempt {attempt+1}/{max_retries})...")
+                    time.sleep(sleep_time)
+                else:
+                    raise
+    return wrapper
 
 load_dotenv()
 
@@ -82,6 +107,7 @@ def chat_completion(
     return text, latency
 
 
+@with_retry_and_backoff
 def _openai_completion(messages: list[dict], model: str, max_tokens: int) -> str:
     from openai import OpenAI
     api_key = os.getenv("OPENAI_API_KEY")
@@ -96,6 +122,7 @@ def _openai_completion(messages: list[dict], model: str, max_tokens: int) -> str
     return response.choices[0].message.content.strip()
 
 
+@with_retry_and_backoff
 def _anthropic_completion(messages: list[dict], model: str, max_tokens: int) -> str:
     import anthropic
     api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -121,6 +148,7 @@ def _anthropic_completion(messages: list[dict], model: str, max_tokens: int) -> 
     return response.content[0].text.strip()
 
 
+@with_retry_and_backoff
 def _gemini_completion(messages: list[dict], model: str, max_tokens: int) -> str:
     """
     Uses the native google-generativeai SDK.

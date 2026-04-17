@@ -120,16 +120,18 @@ Fetches 60–80 US federal employment wrongful termination opinions from CourtLi
 python -m advocate.rag.build_index
 ```
 
-### 4. Launch the app
+### 4. Launch the Research Dashboard
+
+Explore the visually rich, dark-themed analysis of 50 simulated scenarios:
 
 ```bash
 streamlit run app.py
 ```
 
-### 5. Run batch SVI validation (optional)
+### 5. Run the batch generation hook (optional)
 
 ```bash
-python -m advocate.evaluation.validate --output validation_results.json
+python run_batch_anthropic.py
 ```
 
 ---
@@ -159,20 +161,27 @@ advocate/
     ├── svi_calculator.py   # SVI, Adversarial Divergence, batch metrics
     ├── compare_models.py   # Multi-model comparison runner + composite ranking
     └── validate.py         # Wilcoxon validation harness
-app.py                      # Streamlit UI (3 tabs)
+app.py                      # Streamlit Research Dashboard
+run_batch_anthropic.py      # Hook to execute 50-scenario evaluation pipeline
+anthropic_research_results.json # Generated 50-scenario Claude data
 requirements.txt
 .env.example
 ```
 
 ---
 
-## UI Tabs
+## Research Dashboard
+
+The main `app.py` Streamlit application is a rich, dark-themed dashboard built to explore the structured Anthropic Claude Sonnet 4.6 batched validation data (`anthropic_research_results.json`). 
 
 | Tab | Description |
 |---|---|
-| **Single Model Run** | Run the pipeline with one model; see full argument detail + gap report |
-| **Multi-Model Comparison** | Select 2–9 models, run same case, compare on all metrics with charts and rankings |
-| **Batch Validation** | Run all 10 test scenarios, compute Wilcoxon test for SVI validity |
+| **📊 Overview** | Outcome distributions, prediction accuracy, and high-level performance insights. |
+| **🎯 SVI Analysis** | Deep dive into Strategy Vulnerability Index distributions across winners/losers and Wilcoxon test stats. |
+| **↔️ Divergence** | Histogram and scatter plots analyzing Adversarial Divergence scores. |
+| **✅ Rule Validity** | Scenario-level breakdown of the 94.5% mean legal citation validity rate. |
+| **🗂️ Per-Scenario** | Comprehensive data table and heatmap visualization of all 50 test cases. |
+| **🔍 Interpretation** | Synthesized AI-quality legal and statistical findings from the SVI validation study. |
 
 ---
 

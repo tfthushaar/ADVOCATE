@@ -39,14 +39,11 @@ def fetch_opinions(max_results: int = TARGET_OPINIONS) -> list[dict]:
 
     print("[build_index] Fetching opinions from CourtListener …")
     opinions = []
-    url = f"{BASE_URL}/opinions/"
+    url = f"{BASE_URL}/search/"
     params = {
         "q": "wrongful termination employment",
         "type": "o",
-        "filed_after": "2010-01-01",
-        "filed_before": "2024-12-31",
         "order_by": "score desc",
-        "page_size": 20,
     }
     token = os.getenv("COURTLISTENER_API_TOKEN", "")
     headers = {"User-Agent": "ADVOCATE-Research-Tool/1.0"}
@@ -61,7 +58,9 @@ def fetch_opinions(max_results: int = TARGET_OPINIONS) -> list[dict]:
             "  3. Add COURTLISTENER_API_TOKEN=<token> to your .env file\n"
         )
 
-    while url and len(opinions) < max_results:
+    # First fetch search results to find opinion IDs
+    search_results = []
+    while url and len(search_results) < max_results:
         resp = requests.get(url, params=params, headers=headers, timeout=30)
         if resp.status_code == 401:
             raise RuntimeError(
@@ -72,13 +71,43 @@ def fetch_opinions(max_results: int = TARGET_OPINIONS) -> list[dict]:
         resp.raise_for_status()
         data = resp.json()
         results = data.get("results", [])
-        opinions.extend(results)
-        print(f"  fetched {len(opinions)} so far …")
+        search_results.extend(results)
+        print(f"  found {len(search_results)} cases so far …")
         url = data.get("next")
-        params = {}          # next URL already encodes all params
-        time.sleep(1)        # be polite to the API
+        params = {}
+        time.sleep(1)
+        
+    search_results = search_results[:max_results]
+    
+    # Now fetch the actual text for each found opinion
+    print(f"[build_index] Fetching full text for {len(search_results)} cases …")
+    for sr in search_results:
+        op_list = sr.get("opinions", [])
+        if not op_list:
+            continue
+        op_id = op_list[0].get("id")
+        
+        # Merge search metadata with fetched opinion body
+        op_dict = {
+            "case_name": sr.get("caseName", ""),
+            "citation": sr.get("citation", [""])[0] if isinstance(sr.get("citation"), list) and sr.get("citation") else sr.get("citation", ""),
+            "court": sr.get("court", ""),
+            "date_filed": sr.get("dateFiled", ""),
+            "absolute_url": sr.get("absolute_url", ""),
+        }
+        
+        try:
+            op_resp = requests.get(f"{BASE_URL}/opinions/{op_id}/", headers=headers, timeout=10)
+            if op_resp.status_code == 200:
+                op_data = op_resp.json()
+                op_dict["plain_text"] = op_data.get("plain_text", "")
+                op_dict["html_with_citations"] = op_data.get("html_with_citations", "")
+                op_dict["html"] = op_data.get("html", "")
+                opinions.append(op_dict)
+            time.sleep(0.5)
+        except Exception as e:
+            print(f"  [warn] Failed to fetch opinion {op_id}: {e}")
 
-    opinions = opinions[:max_results]
     with open(cache_file, "w") as f:
         json.dump(opinions, f, indent=2)
     print(f"[build_index] Saved {len(opinions)} raw opinions to cache.")

@@ -12,7 +12,7 @@ from advocate.rag.retriever import verify_citation
 
 load_dotenv()
 
-DEFAULT_MODEL = os.getenv("ADVOCATE_MODEL", "gpt-4o")
+DEFAULT_MODEL = os.getenv("ADVOCATE_MODEL", "claude-sonnet-4-6")
 
 EVALUATOR_SYSTEM = """You are a strict, impartial legal argument evaluator.
 You score legal claims using a fixed rubric. You MUST follow the scoring rules exactly.
