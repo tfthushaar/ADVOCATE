@@ -271,14 +271,32 @@ def load_research_results() -> dict:
 
 
 def get_metrics_functions():
-    from advocate.evaluation.svi_calculator import (
-        compute_adversarial_divergence,
-        compute_rule_validity_rate,
-        compute_svi,
-        embedding_backend_status,
-    )
+    import importlib
 
-    return compute_adversarial_divergence, compute_rule_validity_rate, compute_svi, embedding_backend_status
+    module = importlib.import_module("advocate.evaluation.svi_calculator")
+
+    def fallback_divergence(_employer_args: dict, _employee_args: dict) -> float:
+        return 0.0
+
+    def fallback_rule_validity(_evaluation: dict) -> float:
+        return 0.0
+
+    def fallback_svi(gap_report: dict) -> float:
+        if "svi" in gap_report and isinstance(gap_report["svi"], (int, float)):
+            return float(gap_report["svi"])
+        unrebutted = gap_report.get("unrebutted_count", 0)
+        total = gap_report.get("total_opponent_claims", 0)
+        return round((unrebutted / total) * 100, 1) if total else 0.0
+
+    def fallback_embedding_status() -> tuple[bool, str]:
+        return False, "Embedding backend status unavailable"
+
+    return (
+        getattr(module, "compute_adversarial_divergence", fallback_divergence),
+        getattr(module, "compute_rule_validity_rate", fallback_rule_validity),
+        getattr(module, "compute_svi", fallback_svi),
+        getattr(module, "embedding_backend_status", fallback_embedding_status),
+    )
 
 
 def get_pipeline_runner():
@@ -301,10 +319,20 @@ def get_validation_runner():
 
 def rag_status() -> tuple[bool, int, str]:
     try:
-        from advocate.rag.retriever import collection_size, index_ready, retrieval_backend_status
+        import importlib
 
-        ready = index_ready()
-        size = collection_size()
+        module = importlib.import_module("advocate.rag.retriever")
+
+        collection_size = getattr(module, "collection_size", lambda: 0)
+        index_ready = getattr(module, "index_ready", lambda: False)
+        retrieval_backend_status = getattr(
+            module,
+            "retrieval_backend_status",
+            lambda: (index_ready(), "Retrieval backend status unavailable"),
+        )
+
+        ready = bool(index_ready())
+        size = int(collection_size())
         _ok, message = retrieval_backend_status()
         return ready, size, message
     except Exception as exc:
