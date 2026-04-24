@@ -11,16 +11,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from advocate.evaluation.compare_models import best_model_overall, run_comparison
-from advocate.evaluation.validate import run_validation
-from advocate.evaluation.svi_calculator import (
-    compute_adversarial_divergence,
-    compute_rule_validity_rate,
-    compute_svi,
-)
 from advocate.llm.client import AVAILABLE_MODELS, is_model_available, provider_env_key_for_model
-from advocate.pipeline.advocate_graph import run_pipeline
-from advocate.rag.retriever import collection_size, index_ready
 from advocate.settings import get_default_model, get_setting, supabase_is_configured
 from advocate.store import SupabaseStore
 
@@ -279,6 +270,47 @@ def load_research_results() -> dict:
         return json.load(handle)
 
 
+def get_metrics_functions():
+    from advocate.evaluation.svi_calculator import (
+        compute_adversarial_divergence,
+        compute_rule_validity_rate,
+        compute_svi,
+        embedding_backend_status,
+    )
+
+    return compute_adversarial_divergence, compute_rule_validity_rate, compute_svi, embedding_backend_status
+
+
+def get_pipeline_runner():
+    from advocate.pipeline.advocate_graph import run_pipeline
+
+    return run_pipeline
+
+
+def get_comparison_functions():
+    from advocate.evaluation.compare_models import best_model_overall, run_comparison
+
+    return best_model_overall, run_comparison
+
+
+def get_validation_runner():
+    from advocate.evaluation.validate import run_validation
+
+    return run_validation
+
+
+def rag_status() -> tuple[bool, int, str]:
+    try:
+        from advocate.rag.retriever import collection_size, index_ready, retrieval_backend_status
+
+        ready = index_ready()
+        size = collection_size()
+        _ok, message = retrieval_backend_status()
+        return ready, size, message
+    except Exception as exc:
+        return False, 0, str(exc)
+
+
 def app_user() -> dict | None:
     return st.session_state.get("auth_user")
 
@@ -327,6 +359,7 @@ def ensure_scenario_state(state_key: str, marker_key: str, selected_name: str, s
 
 
 def pipeline_summary(state: dict, model: str) -> dict:
+    compute_adversarial_divergence, compute_rule_validity_rate, compute_svi, _status = get_metrics_functions()
     evaluation = state.get("evaluation", {})
     gap_report = state.get("gap_report", {})
     return {
@@ -345,6 +378,7 @@ def pipeline_summary(state: dict, model: str) -> dict:
 
 
 def comparison_summary(comparison: dict) -> dict:
+    best_model_overall, _run_comparison = get_comparison_functions()
     winner = best_model_overall(comparison)
     return {
         "winner": winner or "-",
@@ -516,6 +550,7 @@ def render_single_result(model: str, state: dict) -> None:
 
 
 def render_comparison_result(comparison: dict) -> None:
+    best_model_overall, _run_comparison = get_comparison_functions()
     winner = best_model_overall(comparison)
     results = comparison.get("results", {})
 
@@ -752,6 +787,9 @@ def render_research_tab() -> None:
 
 def render_setup_tab(store: SupabaseStore) -> None:
     ok, message = store.healthcheck()
+    rag_ready, rag_size, rag_message = rag_status()
+    _divergence, _rule_validity, _svi, embedding_status = get_metrics_functions()
+    embeddings_ready, embeddings_message = embedding_status()
     provider_rows = []
     for env_key, provider in PROVIDER_SETTINGS:
         configured = any(
@@ -785,12 +823,18 @@ def render_setup_tab(store: SupabaseStore) -> None:
     st.markdown(
         "<div class='metric-grid'>"
         + metric_card("Supabase", "Connected" if ok else "Issue", message)
-        + metric_card("RAG Index", "Ready" if index_ready() else "Not Ready", f"{collection_size()} chunks detected")
+        + metric_card("RAG Index", "Ready" if rag_ready else "Not Ready", f"{rag_size} chunks detected")
         + metric_card("Default Model", get_default_model(), "Model used when none is selected")
         + metric_card("Recommended Entry Point", "streamlit run app.py", "Single deployable Streamlit app")
         + "</div>",
         unsafe_allow_html=True,
     )
+
+    st.info(f"Retrieval backend: {rag_message}")
+    if embeddings_ready:
+        st.info(f"Embedding backend: {embeddings_message}")
+    else:
+        st.warning(f"Embedding backend: {embeddings_message}")
 
     st.markdown("#### Secrets Template")
     st.code(SECRETS_EXAMPLE_PATH.read_text(encoding="utf-8"), language="toml")
@@ -844,21 +888,25 @@ def render_workspace_tab(store: SupabaseStore) -> None:
                 st.error("Enter a case brief first.")
             else:
                 with st.spinner(f"Running the ADVOCATE pipeline with {effective_model}..."):
-                    state = run_pipeline(st.session_state["single_case_brief"], model=effective_model)
-                    st.session_state["latest_single_result"] = {
-                        "model": effective_model,
-                        "state": state,
-                    }
-                    summary = pipeline_summary(state, effective_model)
-                    save_run(
-                        store,
-                        run_mode="single",
-                        title=brief_title(st.session_state["single_case_brief"]),
-                        model=effective_model,
-                        case_brief=st.session_state["single_case_brief"],
-                        summary=summary,
-                        result=state,
-                    )
+                    try:
+                        run_pipeline = get_pipeline_runner()
+                        state = run_pipeline(st.session_state["single_case_brief"], model=effective_model)
+                        st.session_state["latest_single_result"] = {
+                            "model": effective_model,
+                            "state": state,
+                        }
+                        summary = pipeline_summary(state, effective_model)
+                        save_run(
+                            store,
+                            run_mode="single",
+                            title=brief_title(st.session_state["single_case_brief"]),
+                            model=effective_model,
+                            case_brief=st.session_state["single_case_brief"],
+                            summary=summary,
+                            result=state,
+                        )
+                    except Exception as exc:
+                        st.error(f"Run failed: {exc}")
 
         latest_single = st.session_state.get("latest_single_result")
         if latest_single:
@@ -888,20 +936,24 @@ def render_workspace_tab(store: SupabaseStore) -> None:
                 st.error("Enter a case brief to compare.")
             else:
                 with st.spinner("Running comparison benchmark..."):
-                    comparison = run_comparison(
-                        case_brief=st.session_state["compare_case_brief"],
-                        model_ids=selected_models,
-                    )
-                    st.session_state["latest_comparison"] = comparison
-                    save_run(
-                        store,
-                        run_mode="compare",
-                        title=brief_title(st.session_state["compare_case_brief"], prefix="Comparison - "),
-                        model=", ".join(selected_models),
-                        case_brief=st.session_state["compare_case_brief"],
-                        summary=comparison_summary(comparison),
-                        result=comparison,
-                    )
+                    try:
+                        _best_model_overall, run_comparison = get_comparison_functions()
+                        comparison = run_comparison(
+                            case_brief=st.session_state["compare_case_brief"],
+                            model_ids=selected_models,
+                        )
+                        st.session_state["latest_comparison"] = comparison
+                        save_run(
+                            store,
+                            run_mode="compare",
+                            title=brief_title(st.session_state["compare_case_brief"], prefix="Comparison - "),
+                            model=", ".join(selected_models),
+                            case_brief=st.session_state["compare_case_brief"],
+                            summary=comparison_summary(comparison),
+                            result=comparison,
+                        )
+                    except Exception as exc:
+                        st.error(f"Comparison failed: {exc}")
 
         latest_comparison = st.session_state.get("latest_comparison")
         if latest_comparison:
@@ -921,20 +973,24 @@ def render_workspace_tab(store: SupabaseStore) -> None:
                 st.error("Configure the provider key for the selected model first.")
             else:
                 with st.spinner("Running held-out validation scenarios..."):
-                    validation = run_validation(str(SCENARIOS_DIR), model=batch_model)
-                    st.session_state["latest_batch_result"] = {
-                        "model": batch_model,
-                        "result": validation,
-                    }
-                    save_run(
-                        store,
-                        run_mode="batch",
-                        title=f"Batch validation - {batch_model}",
-                        model=batch_model,
-                        case_brief="Held-out validation set",
-                        summary=batch_summary(validation, batch_model),
-                        result=validation,
-                    )
+                    try:
+                        run_validation = get_validation_runner()
+                        validation = run_validation(str(SCENARIOS_DIR), model=batch_model)
+                        st.session_state["latest_batch_result"] = {
+                            "model": batch_model,
+                            "result": validation,
+                        }
+                        save_run(
+                            store,
+                            run_mode="batch",
+                            title=f"Batch validation - {batch_model}",
+                            model=batch_model,
+                            case_brief="Held-out validation set",
+                            summary=batch_summary(validation, batch_model),
+                            result=validation,
+                        )
+                    except Exception as exc:
+                        st.error(f"Batch validation failed: {exc}")
 
         latest_batch = st.session_state.get("latest_batch_result")
         if latest_batch:
@@ -944,6 +1000,7 @@ def render_workspace_tab(store: SupabaseStore) -> None:
 def render_sidebar(store: SupabaseStore) -> None:
     user = app_user()
     ok, message = store.healthcheck()
+    rag_ready, rag_size, _rag_message = rag_status()
     with st.sidebar:
         st.markdown("## ADVOCATE")
         st.caption("Authenticated legal strategy workspace")
@@ -984,7 +1041,7 @@ def render_sidebar(store: SupabaseStore) -> None:
         st.write(
             {
                 "Supabase": "Connected" if ok else f"Issue: {message}",
-                "RAG index": f"{collection_size()} chunks" if index_ready() else "Not built",
+                "RAG index": f"{rag_size} chunks" if rag_ready else "Not built",
                 "Configured models": len(configured_models()),
             },
         )

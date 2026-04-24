@@ -1,273 +1,368 @@
 # ADVOCATE
 
-ADVOCATE is a Streamlit application for adversarial employment-law case analysis. It combines a five-agent legal reasoning pipeline with persistent user accounts and saved run history backed by Supabase.
+ADVOCATE stands for **Adversarial Verdict Analysis through Coordinated Agent-based Trial Emulation**.
+
+It is a Streamlit application and research-oriented legal reasoning framework for **employment wrongful termination analysis**. Instead of asking one model for one answer, ADVOCATE runs a case through a **five-agent adversarial pipeline** that separates plaintiff-side and defense-side reasoning, scores both sides on a structured legal rubric, and surfaces the weakest parts of the overall strategy.
 
 Live app: [advocate-pretrial-simulator.streamlit.app](https://advocate-pretrial-simulator.streamlit.app/)
 
-## Overview
+## What This Project Is
+
+At a high level, ADVOCATE is built for a simple question:
+
+> If we force an AI system to reason like both sides of a dispute, score those arguments rigorously, and then identify what one side failed to answer, can we produce something more useful than a single-shot legal summary?
+
+This project answers that by combining:
+
+- a **five-agent legal reasoning architecture**
+- an **adversarial workflow** instead of a single-response workflow
+- **IRAC-based evaluation**
+- a **Strategy Vulnerability Index (SVI)** for identifying strategic gaps
+- optional **RAG grounding** over employment-law opinions
+- a deployable **Streamlit + Supabase** application for interactive use
 
 The current app supports:
 
-- Streamlit as the deployable frontend
-- Supabase-backed user profiles and persistent saved history
-- Username + password sign-up and sign-in
-- Single-case analysis runs
-- Multi-model comparison runs
-- Batch validation runs over the bundled scenarios
-- A research/benchmark tab using the included `anthropic_research_results.json`
-- Optional per-session provider API key entry directly in the Streamlit sidebar
+- username/password account creation and sign-in
+- persistent saved run history with Supabase
+- single-case analysis
+- multi-model comparison
+- batch validation over the included scenario set
+- a bundled research/benchmark tab
+- per-session provider API key entry in the sidebar
 
-The underlying ADVOCATE pipeline is still the same core flow:
+## Why This Exists
+
+Single-model legal outputs often collapse into one narrative. That is not ideal for adversarial legal reasoning, where the real value often lies in:
+
+- seeing the strongest arguments for **both** sides
+- detecting what one side **failed to rebut**
+- identifying whether a position is persuasive because it is strong, or just because the opposing side was underdeveloped
+- benchmarking different models on the **same** structured legal task
+
+ADVOCATE is designed to be useful for:
+
+- **pre-trial strategy exploration**
+- **legal education and classroom simulations**
+- **AI legal reasoning research**
+- **model benchmarking**
+- **stress-testing argument quality**
+- **identifying vulnerabilities in a litigation narrative**
+
+It is not a substitute for licensed legal advice. It is a structured analysis and benchmarking tool.
+
+## Core Idea: Five-Agent Adversarial Reasoning
+
+Instead of one model producing one answer, ADVOCATE uses five coordinated agents:
+
+1. **Case Parser**
+2. **Employer Agent**
+3. **Employee Agent**
+4. **IRAC Evaluator**
+5. **Strategy Gap Report Agent**
+
+That gives the system a workflow closer to adversarial legal preparation than a normal chat interaction.
+
+## The Five-Agent Framework
+
+### Agent 1: Case Parser
+
+The parser converts a free-text case brief into structured legal input.
+
+It extracts:
+
+- plaintiff
+- defendant
+- employment type
+- stated termination reason
+- jurisdiction
+- key facts
+- evidence
+- likely employee claims
+- likely employer defenses
+- protected characteristics
+- timeline
+
+Why this matters:
+
+- downstream agents reason over a consistent case representation
+- evaluation becomes more reproducible
+- custom user briefs become easier to compare across runs and models
+
+### Agent 2: Employer Agent
+
+This agent acts like employer-side counsel and generates the strongest employer defense it can.
+
+Its role:
+
+- argue only for the employer
+- retrieve relevant authority when available
+- produce 3-5 structured IRAC claims
+- cite case authority from retrieved material
+
+### Agent 3: Employee Agent
+
+This agent acts like employee-side counsel and generates the strongest plaintiff-side case it can.
+
+Its role:
+
+- argue only for the employee
+- retrieve relevant authority when available
+- produce 3-5 structured IRAC claims
+- cite case authority from retrieved material
+
+### Architectural Separation Between Agents 2 and 3
+
+This is one of the most important design choices in the project.
+
+The employer and employee agents are intentionally kept **architecturally isolated**. They do not share each other's reasoning chain while generating arguments.
+
+Why that matters:
+
+- it reduces consensus collapse
+- it encourages genuinely divergent arguments
+- it better simulates adversarial legal reasoning
+- it makes the resulting gap analysis more meaningful
+
+If both sides shared the same evolving context window, they would tend to converge on the same narrative. That is the opposite of what an adversarial legal framework needs.
+
+### Agent 4: IRAC Evaluator
+
+Once both sides generate arguments, the evaluator scores them using a structured rubric.
+
+Current scoring dimensions include:
+
+- **Issue Clarity**
+- **Rule Validity**
+- **Application Logic**
+- **Rebuttal Coverage**
+
+This creates a more disciplined evaluation loop than "which side sounds better?"
+
+### Agent 5: Strategy Gap Report Agent
+
+This final agent identifies the strategic gaps in the weaker side's case.
+
+It produces:
+
+- weaker side
+- unrebutted opponent claims
+- ranked vulnerabilities
+- severity
+- suggested counters
+- overall strategy assessment
+- top-priority action
+
+This is where ADVOCATE becomes especially useful in practice: it does not stop at scoring. It tries to answer:
+
+> Where is the strategy actually vulnerable?
+
+## End-to-End Flow
 
 ```text
-parse_case
-  -> employer_agent
-  -> employee_agent
-  -> irac_evaluator
-  -> gap_report
+Raw Case Brief
+    |
+    v
+Case Parser
+    |
+    v
+Structured Case Representation
+    |
+    +--> Employer Agent
+    |
+    +--> Employee Agent
+    |
+    v
+IRAC Evaluator
+    |
+    v
+Strategy Gap Report
 ```
 
-## Live Deployment
+## Why the Adversarial Design Matters
 
-The public deployment is here:
+The project is built around the idea that legal reasoning quality is not just about producing a plausible answer. It is about:
 
-- [https://advocate-pretrial-simulator.streamlit.app/](https://advocate-pretrial-simulator.streamlit.app/)
+- identifying the issue correctly
+- citing valid authority
+- applying law to facts coherently
+- answering the opponent's strongest claims
 
-### What works without a model API key
+That makes ADVOCATE different from a generic "legal summary" tool. Its value is often in the **structure of disagreement**.
 
-If the app is deployed with only Supabase secrets configured:
+## Strategy Vulnerability Index (SVI)
 
-- users can create accounts
-- users can sign in
-- users can browse the bundled research tab
-- users can use persistence and saved run history
+ADVOCATE uses an SVI-style gap measure to estimate strategic weakness.
 
-But live ADVOCATE pipeline runs will only work when either:
+In simple terms:
 
-- the deployment has a provider key in Streamlit secrets, or
-- the signed-in user pastes their own provider key into the sidebar for that session
+- the more important opponent claims go unrebutted
+- the more vulnerable that side's strategy is
 
-## Architecture
+The app uses SVI to help answer:
+
+- which side is more exposed?
+- how complete is the rebuttal coverage?
+- where should trial preparation focus next?
+
+## IRAC Evaluation
+
+IRAC is a natural fit here because it imposes legal-argument discipline.
+
+The evaluator looks at:
+
+- **Issue**: Did the argument identify the legal question cleanly?
+- **Rule**: Was the cited authority grounded and valid?
+- **Application**: Did the agent connect the rule to the actual facts?
+- **Rebuttal**: Did it meaningfully answer the opposing side?
+
+This makes the framework useful not only for generating arguments, but also for **measuring** them.
+
+## Retrieval and Grounding
+
+ADVOCATE can use a local ChromaDB-backed retrieval layer populated from employment-law opinions.
+
+When the RAG layer is available, it helps with:
+
+- citation grounding
+- legal precedent retrieval
+- rule-validity scoring
+
+When it is not available:
+
+- the app still loads
+- auth and persistence still work
+- the research tab still works
+- live reasoning can still run
+- retrieval returns empty results and citation grounding becomes weaker
+
+This is deliberate. The app now degrades gracefully instead of crashing at startup if optional RAG dependencies are unavailable.
+
+## What the App Is Good For
+
+### 1. Pre-trial reasoning support
+
+A user can paste a brief and quickly inspect:
+
+- strongest employer-side arguments
+- strongest employee-side arguments
+- which side appears stronger under the rubric
+- what that side failed to address
+
+### 2. Legal education
+
+The framework is useful for:
+
+- classroom simulations
+- IRAC practice
+- employment-law issue spotting
+- argument comparison exercises
+
+### 3. Model benchmarking
+
+Because the same structured pipeline can be run across multiple models, ADVOCATE is useful for comparing:
+
+- overall legal reasoning quality
+- citation validity
+- adversarial divergence
+- vulnerability exposure
+- latency
+
+### 4. Prompt-architecture research
+
+The system is also a useful case study in:
+
+- agent separation
+- structured evaluation
+- adversarial prompting
+- orchestration of multiple reasoning roles
+
+## Current Deployment Architecture
+
+The public app is now a deployable Streamlit application with persistent storage.
 
 ```text
-Streamlit UI (app.py)
+Streamlit UI
     |
     +-- Supabase persistence/auth layer
     |     - app_users
     |     - analysis_runs
     |
     +-- ADVOCATE pipeline
-          parse_case
-            -> employer_agent
-            -> employee_agent
-            -> irac_evaluator
-            -> gap_report
+    |     - parse_case
+    |     - employer_agent
+    |     - employee_agent
+    |     - irac_evaluator
+    |     - gap_report
     |
-    +-- Optional RAG layer
-          ChromaDB + CourtListener-derived employment-law cases
+    +-- Optional local RAG layer
+          - ChromaDB
+          - employment-law case chunks
 ```
 
 ## Persistent Data Model
 
-Supabase stores two app tables:
+Supabase stores two main application tables:
 
-- `app_users`
-  - username
-  - password hash
-  - created/login timestamps
-- `analysis_runs`
-  - owning user
-  - run title
-  - mode (`single`, `compare`, `batch`)
-  - selected model(s)
-  - case brief
-  - saved summary JSON
-  - full saved result JSON
+### `app_users`
+
+Contains:
+
+- username
+- password hash
+- created timestamp
+- last login timestamp
+
+### `analysis_runs`
+
+Contains:
+
+- owning user
+- run mode
+- title
+- selected model(s)
+- case brief
+- summary JSON
+- result JSON
+- timestamps
 
 Schema file:
 
 - [`supabase/schema.sql`](supabase/schema.sql)
 
-## Core Files
-
-- [`app.py`](app.py): main authenticated Streamlit app
-- [`app_simulation.py`](app_simulation.py): compatibility entrypoint that launches the main app
-- [`advocate/store.py`](advocate/store.py): Supabase storage layer
-- [`advocate/auth.py`](advocate/auth.py): username/password hashing and validation
-- [`advocate/settings.py`](advocate/settings.py): environment, Streamlit secrets, and session-setting helpers
-- [`advocate/pipeline/advocate_graph.py`](advocate/pipeline/advocate_graph.py): main ADVOCATE graph orchestration
-- [`advocate/llm/client.py`](advocate/llm/client.py): provider routing for OpenAI, Anthropic, and Gemini
-- [`supabase/schema.sql`](supabase/schema.sql): SQL required for persistent database tables
-- [`.streamlit/secrets.toml.example`](.streamlit/secrets.toml.example): deployment secrets template
-- [`.env.example`](.env.example): local env template
-
-## Quick Start
-
-### 1. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 2. Configure secrets
-
-For local development:
-
-```bash
-copy .env.example .env
-```
-
-For Streamlit deployment, add secrets in TOML format using:
-
-- [`.streamlit/secrets.toml.example`](.streamlit/secrets.toml.example)
-
-### 3. Set up Supabase
-
-1. Create a Supabase project.
-2. Open `SQL Editor`.
-3. Run the SQL from [`supabase/schema.sql`](supabase/schema.sql).
-4. Copy your project URL.
-5. Copy your backend Supabase secret key.
-6. Add both to Streamlit secrets.
-
-Important:
-
-- `SUPABASE_URL` should be your project URL, like `https://your-project.supabase.co`
-- `SUPABASE_SERVICE_ROLE_KEY` should be a backend secret key
-- do not use the publishable key for `SUPABASE_SERVICE_ROLE_KEY`
-
-## Streamlit Secrets
-
-### Minimum deployment secrets
-
-This is enough to deploy the app with authentication and persistence:
-
-```toml
-SUPABASE_URL = "https://your-project.supabase.co"
-SUPABASE_SERVICE_ROLE_KEY = "your_backend_secret_key"
-ADVOCATE_MODEL = "gpt-4o-mini"
-```
-
-### Deployment with a default model provider
-
-```toml
-SUPABASE_URL = "https://your-project.supabase.co"
-SUPABASE_SERVICE_ROLE_KEY = "your_backend_secret_key"
-OPENAI_API_KEY = "sk-..."
-ADVOCATE_MODEL = "gpt-4o-mini"
-```
-
-You can swap `OPENAI_API_KEY` for:
-
-- `ANTHROPIC_API_KEY`
-- `GOOGLE_API_KEY`
-
-### Bring-your-own-key deployment
-
-If you do not want to store a model provider key in deployment secrets, that is supported too.
-
-In that setup:
-
-- keep the Supabase secrets configured
-- deploy without `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GOOGLE_API_KEY`
-- users can paste their own provider key into the sidebar after signing in
-
-## Local Development
-
-### Run the app
-
-```bash
-streamlit run app.py
-```
-
-### Optional: build the local RAG index
-
-```bash
-python -m advocate.rag.build_index
-```
-
-This step is optional. Without a local Chroma index, the app still works, but retrieval-grounded citation support is weaker.
-
-## Streamlit Community Cloud Deployment
-
-Recommended settings:
-
-- Entry point: `app.py`
-- Python version: `3.11`
-- Secrets: paste TOML into the Streamlit deployment secrets box
-
-### Recommended deployment flow
-
-1. Push repo updates to GitHub.
-2. Connect the repo in Streamlit Community Cloud.
-3. Set entrypoint to `app.py`.
-4. Select Python `3.11`.
-5. Paste your secrets.
-6. Deploy.
-
 ## App Areas
 
 ### Workspace
 
-Main signed-in workspace where users can:
+Signed-in users can:
 
-- run a single case analysis
+- run single-case analysis
 - compare multiple models on one case
-- run batch validation on the bundled scenario set
+- run batch validation on bundled scenarios
 
 ### My History
 
-Per-user saved history from Supabase, including:
-
-- saved single runs
-- saved comparisons
-- saved batch validations
+Users can reopen prior runs saved in Supabase.
 
 ### Research
 
-Displays the bundled benchmark dataset from:
+This tab exposes the bundled research dataset and benchmark visualizations from:
 
 - `anthropic_research_results.json`
 
 ### Setup
 
-Shows deployment health, including:
+This tab surfaces deployment health, including:
 
-- Supabase connectivity
-- RAG index status
-- configured providers
-- secrets/schema reference blocks
-
-## Authentication Model
-
-The app currently uses app-managed authentication with:
-
-- username
-- password
-- password hashing in Python
-- Supabase as persistent storage
-
-This is not using Supabase Auth's hosted sign-in UI. Instead, the Streamlit app manages sign-up and sign-in itself and stores user records in the `app_users` table.
-
-## RAG and Retrieval Notes
-
-The legal retrieval layer still uses local Chroma persistence.
-
-Default path resolution checks:
-
-- `./advocate/data/chroma_db`
-- `./advocate/advocate/data/chroma_db`
-
-If no index is available:
-
-- the app still loads
-- auth and persistence still work
-- research tab still works
-- pipeline runs may be less grounded because retrieval returns empty results
+- Supabase status
+- retrieval backend status
+- embedding backend status
+- configured model providers
+- schema and secrets reference blocks
 
 ## Supported Model Providers
 
-The current app supports:
+The current code supports:
 
 - OpenAI
 - Anthropic
@@ -277,32 +372,110 @@ Provider routing is handled in:
 
 - [`advocate/llm/client.py`](advocate/llm/client.py)
 
-## Security Notes
+Users can supply model keys in two ways:
 
-- Never expose your Supabase backend secret in browser-side code.
-- Never commit real secrets to the repository.
-- If a backend secret was pasted into chat, screenshots, or public text, rotate it before deployment.
-- Streamlit secrets are the right place for deployment-time secret storage.
+- deployment-level secrets
+- per-session keys pasted into the Streamlit sidebar
 
-## Example Secrets Block
+## Deployment Notes
+
+Recommended Streamlit deployment settings:
+
+- entrypoint: `app.py`
+- Python version: `3.11`
+
+Minimum secrets for auth + persistence:
+
+```toml
+SUPABASE_URL = "https://your-project.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY = "your_backend_secret_key"
+ADVOCATE_MODEL = "gpt-4o-mini"
+```
+
+If you want a deployment-wide default model provider:
 
 ```toml
 SUPABASE_URL = "https://your-project.supabase.co"
 SUPABASE_SERVICE_ROLE_KEY = "your_backend_secret_key"
 OPENAI_API_KEY = "sk-..."
 ADVOCATE_MODEL = "gpt-4o-mini"
-COURTLISTENER_API_TOKEN = "your_courtlistener_token"
 ```
 
-## Repository Status
+If you want users to bring their own model key:
 
-The repository is currently set up for:
+- deploy only with the Supabase secrets
+- do not add provider secrets
+- users can paste their own provider key in the app sidebar
 
-- authenticated Streamlit deployment
-- persistent Supabase-backed storage
-- optional deployment-level model credentials
-- optional per-session user-supplied model credentials
+## Local Development
 
-## License / Usage
+Install dependencies:
 
-No explicit license file is currently included in the repository. Add one if you want to make reuse terms explicit.
+```bash
+pip install -r requirements.txt
+```
+
+Copy local config:
+
+```bash
+copy .env.example .env
+```
+
+Run the app:
+
+```bash
+streamlit run app.py
+```
+
+Optional: build the local retrieval index:
+
+```bash
+python -m advocate.rag.build_index
+```
+
+## Security Notes
+
+- Never commit real secrets to the repository.
+- Never expose backend Supabase secrets in browser-side code.
+- If a backend secret was posted in chat, screenshots, or public text, rotate it immediately.
+- Streamlit secrets are the right place for deployment-time secrets.
+
+## Limitations
+
+ADVOCATE is useful, but it has important limitations:
+
+- it is not legal advice
+- it depends on the quality of the input brief
+- it can still inherit model hallucinations
+- retrieval quality depends on the local index being available
+- the current legal domain focus is wrongful termination / employment-law style analysis
+
+## Key Files
+
+- [`app.py`](app.py): main Streamlit app
+- [`advocate/pipeline/advocate_graph.py`](advocate/pipeline/advocate_graph.py): 5-agent orchestration
+- [`advocate/agents/parser_agent.py`](advocate/agents/parser_agent.py): case parser
+- [`advocate/agents/employer_agent.py`](advocate/agents/employer_agent.py): employer-side advocate
+- [`advocate/agents/employee_agent.py`](advocate/agents/employee_agent.py): employee-side advocate
+- [`advocate/agents/irac_evaluator.py`](advocate/agents/irac_evaluator.py): rubric scorer
+- [`advocate/agents/gap_report.py`](advocate/agents/gap_report.py): strategic vulnerability analyzer
+- [`advocate/store.py`](advocate/store.py): Supabase persistence
+- [`advocate/auth.py`](advocate/auth.py): username/password auth helpers
+- [`advocate/settings.py`](advocate/settings.py): unified settings and session-secret helpers
+- [`supabase/schema.sql`](supabase/schema.sql): database schema
+
+## Summary
+
+ADVOCATE is not just a UI for calling an LLM. It is a structured adversarial reasoning system for employment-law disputes.
+
+Its main contribution is the combination of:
+
+- role-separated adversarial generation
+- structured IRAC evaluation
+- vulnerability-focused strategic analysis
+- deployment-ready persistent application infrastructure
+
+That makes it useful both as:
+
+- a practical pre-trial exploration tool
+- and a research framework for studying legal reasoning quality across models
