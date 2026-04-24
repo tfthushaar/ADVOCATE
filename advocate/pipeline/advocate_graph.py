@@ -1,87 +1,83 @@
-"""
-advocate_graph.py  —  LangGraph Orchestration
-Five-agent ADVOCATE pipeline with model threaded through state.
+"""LangGraph orchestration for the five-agent ADVOCATE pipeline."""
 
-Pipeline:
-  parse_case → [employer_agent ‖ employee_agent] → irac_evaluator → gap_report
-"""
+from __future__ import annotations
 
 import operator
 from typing import Annotated, TypedDict
-from langgraph.graph import StateGraph, END
-from advocate.agents.parser_agent import parse_case
-from advocate.agents.employer_agent import build_employer_arguments
+
+from langgraph.graph import END, StateGraph
+
 from advocate.agents.employee_agent import build_employee_arguments
-from advocate.agents.irac_evaluator import evaluate
+from advocate.agents.employer_agent import build_employer_arguments
 from advocate.agents.gap_report import generate_gap_report
+from advocate.agents.irac_evaluator import evaluate
+from advocate.agents.parser_agent import parse_case
+from advocate.settings import get_default_model
 
-
-# ─── State Schema ─────────────────────────────────────────────────────────────
 
 class AdvocateState(TypedDict):
-    # Input
     case_brief: str
-    model: str                     # LLM model to use for all agents in this run
-
-    # Agent outputs
+    model: str
     parsed_case: dict
     employer_args: dict
     employee_args: dict
     evaluation: dict
     gap_report: dict
-
-    # Metadata
     errors: Annotated[list[str], operator.add]
     steps_completed: Annotated[list[str], operator.add]
 
-
-# ─── Node Functions ───────────────────────────────────────────────────────────
 
 def node_parse_case(state: AdvocateState) -> dict:
     try:
         parsed = parse_case(state["case_brief"], model=state["model"])
         return {"parsed_case": parsed, "steps_completed": ["parse_case"]}
-    except Exception as e:
-        return {"parsed_case": {}, "errors": [f"parse_case: {e}"], "steps_completed": ["parse_case"]}
+    except Exception as exc:
+        return {
+            "parsed_case": {},
+            "errors": [f"parse_case: {exc}"],
+            "steps_completed": ["parse_case"],
+        }
 
 
 def node_employer_agent(state: AdvocateState) -> dict:
-    """ISOLATION: receives only parsed_case and model — zero shared context with employee agent."""
     try:
-        args = build_employer_arguments(state["parsed_case"], model=state["model"])
-        return {"employer_args": args, "steps_completed": ["employer_agent"]}
-    except Exception as e:
+        arguments = build_employer_arguments(state["parsed_case"], model=state["model"])
+        return {"employer_args": arguments, "steps_completed": ["employer_agent"]}
+    except Exception as exc:
         return {
-            "employer_args": {"side": "employer", "claims": [], "error": str(e)},
-            "errors": [f"employer_agent: {e}"],
+            "employer_args": {"side": "employer", "claims": [], "error": str(exc)},
+            "errors": [f"employer_agent: {exc}"],
             "steps_completed": ["employer_agent"],
         }
 
 
 def node_employee_agent(state: AdvocateState) -> dict:
-    """ISOLATION: receives only parsed_case and model — zero shared context with employer agent."""
     try:
-        args = build_employee_arguments(state["parsed_case"], model=state["model"])
-        return {"employee_args": args, "steps_completed": ["employee_agent"]}
-    except Exception as e:
+        arguments = build_employee_arguments(state["parsed_case"], model=state["model"])
+        return {"employee_args": arguments, "steps_completed": ["employee_agent"]}
+    except Exception as exc:
         return {
-            "employee_args": {"side": "employee", "claims": [], "error": str(e)},
-            "errors": [f"employee_agent: {e}"],
+            "employee_args": {"side": "employee", "claims": [], "error": str(exc)},
+            "errors": [f"employee_agent: {exc}"],
             "steps_completed": ["employee_agent"],
         }
 
 
 def node_irac_evaluator(state: AdvocateState) -> dict:
     try:
-        eval_result = evaluate(
+        evaluation = evaluate(
             case=state["parsed_case"],
             employer_args=state["employer_args"],
             employee_args=state["employee_args"],
             model=state["model"],
         )
-        return {"evaluation": eval_result, "steps_completed": ["irac_evaluator"]}
-    except Exception as e:
-        return {"evaluation": {}, "errors": [f"irac_evaluator: {e}"], "steps_completed": ["irac_evaluator"]}
+        return {"evaluation": evaluation, "steps_completed": ["irac_evaluator"]}
+    except Exception as exc:
+        return {
+            "evaluation": {},
+            "errors": [f"irac_evaluator: {exc}"],
+            "steps_completed": ["irac_evaluator"],
+        }
 
 
 def node_gap_report(state: AdvocateState) -> dict:
@@ -94,11 +90,13 @@ def node_gap_report(state: AdvocateState) -> dict:
             model=state["model"],
         )
         return {"gap_report": report, "steps_completed": ["gap_report"]}
-    except Exception as e:
-        return {"gap_report": {"error": str(e)}, "errors": [f"gap_report: {e}"], "steps_completed": ["gap_report"]}
+    except Exception as exc:
+        return {
+            "gap_report": {"error": str(exc)},
+            "errors": [f"gap_report: {exc}"],
+            "steps_completed": ["gap_report"],
+        }
 
-
-# ─── Graph Construction ───────────────────────────────────────────────────────
 
 def build_graph() -> StateGraph:
     graph = StateGraph(AdvocateState)
@@ -118,22 +116,13 @@ def build_graph() -> StateGraph:
     return graph.compile()
 
 
-# ─── Public API ───────────────────────────────────────────────────────────────
-
 def run_pipeline(case_brief: str, model: str | None = None) -> AdvocateState:
-    """
-    Run the full ADVOCATE pipeline on a case brief.
-
-    Args:
-        case_brief: Raw text of the case brief.
-        model:      LLM model ID for all agents. Defaults to ADVOCATE_MODEL env var.
-    """
-    import os
-    model = model or os.getenv("ADVOCATE_MODEL", "claude-sonnet-4-6")
+    """Run the full ADVOCATE pipeline on a case brief."""
     graph = build_graph()
-    initial: AdvocateState = {
+    selected_model = model or get_default_model()
+    initial_state: AdvocateState = {
         "case_brief": case_brief,
-        "model": model,
+        "model": selected_model,
         "parsed_case": {},
         "employer_args": {},
         "employee_args": {},
@@ -142,4 +131,4 @@ def run_pipeline(case_brief: str, model: str | None = None) -> AdvocateState:
         "errors": [],
         "steps_completed": [],
     }
-    return graph.invoke(initial)
+    return graph.invoke(initial_state)

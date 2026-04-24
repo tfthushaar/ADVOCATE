@@ -1,924 +1,1106 @@
-"""
-app.py — ADVOCATE Research Dashboard
-Anthropic Claude Sonnet 4.6 · 50-Scenario Batch Validation Results
-"""
+"""Deploy-ready Streamlit entrypoint for the ADVOCATE application."""
 
+from __future__ import annotations
+
+from dataclasses import asdict
+from datetime import datetime
 import json
-import os
-import math
 from pathlib import Path
 
-import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
 import plotly.express as px
-from plotly.subplots import make_subplots
+import streamlit as st
 
-# ─── Page Config ──────────────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="ADVOCATE Research Dashboard",
-    page_icon="⚖️",
-    layout="wide",
-    initial_sidebar_state="expanded",
+from advocate.evaluation.compare_models import best_model_overall, run_comparison
+from advocate.evaluation.validate import run_validation
+from advocate.evaluation.svi_calculator import (
+    compute_adversarial_divergence,
+    compute_rule_validity_rate,
+    compute_svi,
 )
+from advocate.llm.client import AVAILABLE_MODELS, is_model_available, provider_env_key_for_model
+from advocate.pipeline.advocate_graph import run_pipeline
+from advocate.rag.retriever import collection_size, index_ready
+from advocate.settings import get_default_model, supabase_is_configured
+from advocate.store import SupabaseStore
 
-# ─── Global CSS ───────────────────────────────────────────────────────────────
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
-
-/* ── Root theme ── */
-html, body, [class*="css"] {
-    font-family: 'Inter', sans-serif;
-}
-
-.main { background: #0a0d14; }
-.block-container { padding: 2rem 2.5rem 4rem 2.5rem !important; max-width: 1400px; }
-
-/* ── Hero banner ── */
-.hero {
-    background: linear-gradient(135deg, #0f1929 0%, #111827 40%, #0d1f3c 100%);
-    border: 1px solid rgba(99,179,237,0.15);
-    border-radius: 20px;
-    padding: 2.5rem 3rem;
-    margin-bottom: 2rem;
-    position: relative;
-    overflow: hidden;
-}
-.hero::before {
-    content: '';
-    position: absolute;
-    top: -60%;
-    right: -10%;
-    width: 500px;
-    height: 500px;
-    background: radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%);
-    pointer-events: none;
-}
-.hero-title {
-    font-size: 2.8rem;
-    font-weight: 800;
-    background: linear-gradient(135deg, #e2e8f0 0%, #93c5fd 50%, #c084fc 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    margin: 0 0 0.4rem 0;
-    line-height: 1.2;
-}
-.hero-sub {
-    font-size: 1.05rem;
-    color: #64748b;
-    font-weight: 400;
-    margin: 0;
-}
-.hero-badge {
-    display: inline-block;
-    background: linear-gradient(135deg, rgba(99,102,241,0.2), rgba(168,85,247,0.2));
-    border: 1px solid rgba(99,102,241,0.4);
-    color: #a5b4fc;
-    padding: 4px 14px;
-    border-radius: 99px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    margin-bottom: 1rem;
-}
-
-/* ── KPI cards ── */
-.kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem; }
-.kpi-card {
-    background: linear-gradient(145deg, #111827, #0f172a);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 16px;
-    padding: 1.4rem 1.6rem;
-    position: relative;
-    overflow: hidden;
-    transition: transform 0.2s, border-color 0.2s;
-}
-.kpi-card:hover { transform: translateY(-3px); border-color: rgba(99,102,241,0.35); }
-.kpi-card::after {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 3px;
-    border-radius: 16px 16px 0 0;
-}
-.kpi-card.blue::after  { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
-.kpi-card.purple::after{ background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
-.kpi-card.green::after { background: linear-gradient(90deg, #10b981, #34d399); }
-.kpi-card.amber::after { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
-.kpi-card.red::after   { background: linear-gradient(90deg, #ef4444, #f87171); }
-.kpi-label { font-size: 0.78rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.5rem; }
-.kpi-value { font-size: 2rem; font-weight: 800; color: #f1f5f9; line-height: 1; margin-bottom: 0.3rem; }
-.kpi-delta { font-size: 0.82rem; color: #94a3b8; }
-.kpi-icon  { position: absolute; top: 1.2rem; right: 1.2rem; font-size: 1.6rem; opacity: 0.3; }
-
-/* ── Section headers ── */
-.section-header {
-    display: flex; align-items: center; gap: 0.6rem;
-    font-size: 1.25rem; font-weight: 700; color: #e2e8f0;
-    margin: 2.5rem 0 1rem 0;
-    border-left: 3px solid #6366f1;
-    padding-left: 0.8rem;
-}
-
-/* ── Insight cards ── */
-.insight-box {
-    background: linear-gradient(135deg, rgba(16,24,40,0.9), rgba(15,23,42,0.9));
-    border: 1px solid rgba(255,255,255,0.07);
-    border-radius: 14px;
-    padding: 1.4rem 1.6rem;
-    margin-bottom: 1rem;
-}
-.insight-title {
-    font-size: 0.85rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    margin-bottom: 0.6rem;
-}
-.insight-body { font-size: 0.94rem; color: #cbd5e1; line-height: 1.65; }
-.insight-highlight { color: #93c5fd; font-weight: 600; }
-.insight-good    { color: #4ade80; font-weight: 600; }
-.insight-warn    { color: #fbbf24; font-weight: 600; }
-.insight-danger  { color: #f87171; font-weight: 600; }
-
-/* ── Wilcoxon badge ── */
-.wilcoxon-banner {
-    background: linear-gradient(135deg, rgba(16,185,129,0.1), rgba(59,130,246,0.1));
-    border: 1px solid rgba(16,185,129,0.35);
-    border-radius: 14px;
-    padding: 1.5rem 2rem;
-    margin: 1.5rem 0;
-}
-.wilcoxon-sig {
-    font-size: 1.5rem; font-weight: 800;
-    background: linear-gradient(135deg, #4ade80, #34d399);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-/* ── Scenario table ── */
-.scenario-table-header {
-    display: grid;
-    grid-template-columns: 100px 130px 90px 90px 90px 100px;
-    gap: 0.5rem;
-    font-size: 0.72rem;
-    font-weight: 700;
-    color: #64748b;
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-    padding: 0.5rem 0.8rem;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-}
-
-/* ── Sidebar ── */
-.sidebar-logo { font-size: 1.5rem; font-weight: 800; color: #e2e8f0; }
-.sidebar-sub  { font-size: 0.8rem; color: #475569; }
-
-/* ── Tabs ── */
-.stTabs [data-baseweb="tab-list"] {
-    background: rgba(15,23,42,0.8);
-    border-radius: 12px;
-    padding: 4px;
-    gap: 4px;
-    border: 1px solid rgba(255,255,255,0.06);
-}
-.stTabs [data-baseweb="tab"] {
-    border-radius: 8px !important;
-    font-weight: 600 !important;
-    font-size: 0.88rem !important;
-    color: #94a3b8 !important;
-    padding: 8px 18px !important;
-}
-.stTabs [aria-selected="true"] {
-    background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
-    color: white !important;
-}
-
-/* ── Plotly overrides for dark ── */
-.js-plotly-plot { border-radius: 14px; }
-</style>
-""", unsafe_allow_html=True)
+APP_ROOT = Path(__file__).parent
+SCENARIOS_DIR = APP_ROOT / "advocate" / "data" / "test_scenarios"
+RESEARCH_RESULTS_PATH = APP_ROOT / "anthropic_research_results.json"
+SECRETS_EXAMPLE_PATH = APP_ROOT / ".streamlit" / "secrets.toml.example"
+SCHEMA_PATH = APP_ROOT / "supabase" / "schema.sql"
 
 
-# ─── Load Data ────────────────────────────────────────────────────────────────
-DATA_PATH = Path(__file__).parent / "anthropic_research_results.json"
+def inject_styles() -> None:
+    st.markdown(
+        """
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
 
-@st.cache_data
-def load_results():
-    with open(DATA_PATH) as f:
-        return json.load(f)
+        :root {
+            --ink: #1f2937;
+            --ink-soft: #52606d;
+            --paper: #f5efe5;
+            --paper-deep: #ebe0cf;
+            --panel: rgba(255, 252, 247, 0.82);
+            --accent: #8c4a2f;
+            --accent-dark: #6b341d;
+            --accent-soft: #d8b08c;
+            --emerald: #2f6f5d;
+            --crimson: #9d3c2c;
+            --border: rgba(107, 52, 29, 0.14);
+            --shadow: 0 18px 40px rgba(63, 34, 18, 0.08);
+        }
 
-data = load_results()
-bm   = data["batch_metrics"]
-wx   = data["wilcoxon_test"]
-per  = data["per_case_results"]
+        html, body, [class*="css"] {
+            font-family: 'IBM Plex Sans', sans-serif;
+            color: var(--ink);
+        }
 
-# ─── Pre-process into DataFrame ───────────────────────────────────────────────
-rows = []
-for case in per:
-    cid = case["case_id"]
-    svi = case["svi"]
-    emp_svi = svi.get("employer_svi", 0)
-    ee_svi  = svi.get("employee_svi", 0)
-    winner  = case["ground_truth"]
-    # loser svi = party that LOST has higher svi
-    if winner == "employer_wins":
-        loser_svi, winner_svi = ee_svi, emp_svi
-        predicted_winner = "employer_wins" if emp_svi < ee_svi else "employee_wins"
-    else:
-        loser_svi, winner_svi = emp_svi, ee_svi
-        predicted_winner = "employee_wins" if ee_svi < emp_svi else "employer_wins"
+        .stApp {
+            background:
+                radial-gradient(circle at top right, rgba(216, 176, 140, 0.35), transparent 28%),
+                radial-gradient(circle at top left, rgba(140, 74, 47, 0.08), transparent 30%),
+                linear-gradient(180deg, #f8f3eb 0%, #f2eadf 100%);
+        }
 
-    rows.append({
-        "scenario": cid.replace("_", " ").title(),
-        "case_id": cid,
-        "ground_truth": winner,
-        "employer_svi": emp_svi,
-        "employee_svi": ee_svi,
-        "divergence": case["divergence"],
-        "rule_validity": case["rule_validity_rate"],
-        "winner_svi": winner_svi,
-        "loser_svi": loser_svi,
-        "svi_gap": loser_svi - winner_svi,
-        "predicted": predicted_winner,
-        "correct": predicted_winner == winner,
-    })
+        .block-container {
+            max-width: 1320px;
+            padding-top: 2rem;
+            padding-bottom: 3rem;
+        }
 
-df = pd.DataFrame(rows)
+        .hero {
+            background: linear-gradient(135deg, rgba(255, 249, 240, 0.96), rgba(247, 237, 220, 0.92));
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 2.1rem 2.3rem;
+            box-shadow: var(--shadow);
+            position: relative;
+            overflow: hidden;
+            margin-bottom: 1.4rem;
+        }
 
-# ─── Sidebar ──────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown('<div class="sidebar-logo">⚖️ ADVOCATE</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sidebar-sub">Research Dashboard v2.0</div>', unsafe_allow_html=True)
-    st.divider()
+        .hero::after {
+            content: "";
+            position: absolute;
+            inset: auto -8% -30% auto;
+            width: 240px;
+            height: 240px;
+            background: radial-gradient(circle, rgba(140, 74, 47, 0.14), transparent 65%);
+            pointer-events: none;
+        }
 
-    st.markdown("**Model Used**")
-    st.markdown("🟠 Claude Sonnet 4.6 (Anthropic)")
-    st.divider()
+        .eyebrow {
+            display: inline-block;
+            background: rgba(140, 74, 47, 0.10);
+            color: var(--accent-dark);
+            border: 1px solid rgba(140, 74, 47, 0.18);
+            padding: 0.3rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.76rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
 
-    st.markdown("**Run Summary**")
-    st.markdown(f"- **Scenarios:** {data['n_scenarios']}")
-    st.markdown(f"- **Successful:** {data['n_successful']}")
-    st.markdown(f"- **Success Rate:** 100%")
-    st.divider()
+        .hero h1, .hero h2, .hero h3 {
+            font-family: 'Fraunces', serif;
+            margin: 0.7rem 0 0.2rem 0;
+            color: #2b2118;
+        }
 
-    st.markdown("**Batch Metrics**")
-    st.markdown(f"- **Outcome Alignment:** {bm['outcome_alignment_pct']}%")
-    st.markdown(f"- **Mean Divergence:** {bm['summary_stats']['mean_divergence']}")
-    st.markdown(f"- **Mean Rule Validity:** {bm['summary_stats']['mean_rule_validity_rate']}%")
-    st.divider()
+        .hero-copy {
+            color: var(--ink-soft);
+            max-width: 760px;
+            line-height: 1.65;
+            font-size: 1rem;
+        }
 
-    st.markdown("**Wilcoxon Test**")
-    sig_color = "#4ade80" if wx["significant"] else "#f87171"
-    st.markdown(f"- **p-value:** `{wx['p_value']:.2e}`")
-    st.markdown(f"- **Statistic:** `{wx['statistic']}`")
-    st.markdown(f"- **Significant:** <span style='color:{sig_color};font-weight:700'>{'Yes ✓' if wx['significant'] else 'No ✗'}</span>", unsafe_allow_html=True)
-    st.divider()
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 0.9rem;
+            margin: 1rem 0 1.25rem 0;
+        }
 
-    # Scenario filter
-    st.markdown("**Filter Scenarios**")
-    gt_filter = st.multiselect(
-        "Ground Truth Outcome",
-        options=["employer_wins", "employee_wins"],
-        default=["employer_wins", "employee_wins"],
+        .metric-card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 1rem 1.1rem;
+            box-shadow: var(--shadow);
+        }
+
+        .metric-label {
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--ink-soft);
+            font-weight: 700;
+        }
+
+        .metric-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #2b2118;
+            margin-top: 0.35rem;
+        }
+
+        .metric-note {
+            color: var(--ink-soft);
+            font-size: 0.88rem;
+            margin-top: 0.35rem;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 1.15rem 1.2rem;
+            box-shadow: var(--shadow);
+        }
+
+        .subtle {
+            color: var(--ink-soft);
+        }
+
+        .claim-card {
+            background: rgba(255, 255, 255, 0.66);
+            border: 1px solid rgba(107, 52, 29, 0.10);
+            border-radius: 16px;
+            padding: 0.95rem 1rem;
+            margin-bottom: 0.8rem;
+        }
+
+        .claim-title {
+            font-weight: 700;
+            color: var(--accent-dark);
+            margin-bottom: 0.35rem;
+        }
+
+        .status-pill {
+            display: inline-block;
+            padding: 0.25rem 0.6rem;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border: 1px solid rgba(107, 52, 29, 0.12);
+            background: rgba(255, 255, 255, 0.72);
+            color: var(--accent-dark);
+        }
+
+        .setup-list {
+            line-height: 1.8;
+            color: var(--ink-soft);
+        }
+
+        .auth-card {
+            background: rgba(255, 251, 245, 0.92);
+            border: 1px solid var(--border);
+            border-radius: 22px;
+            padding: 1.5rem;
+            box-shadow: var(--shadow);
+        }
+
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 0.35rem;
+            background: rgba(255,255,255,0.55);
+            padding: 0.35rem;
+            border-radius: 14px;
+            border: 1px solid var(--border);
+        }
+
+        .stTabs [data-baseweb="tab"] {
+            font-weight: 700;
+            color: var(--ink-soft);
+            border-radius: 10px !important;
+            padding: 0.7rem 1rem !important;
+        }
+
+        .stTabs [aria-selected="true"] {
+            background: #fff7ec !important;
+            color: var(--accent-dark) !important;
+            border: 1px solid rgba(140, 74, 47, 0.18);
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
-    correct_only = st.checkbox("Correct predictions only", value=False)
-
-# Apply filters
-df_filtered = df[df["ground_truth"].isin(gt_filter)]
-if correct_only:
-    df_filtered = df_filtered[df_filtered["correct"]]
-
-n_correct = df["correct"].sum()
-accuracy  = round(n_correct / len(df) * 100, 1)
-
-# ─── HERO ─────────────────────────────────────────────────────────────────────
-st.markdown("""
-<div class="hero">
-  <div class="hero-badge">📄 Research Results · Batch Validation · 50 Scenarios</div>
-  <h1 class="hero-title">ADVOCATE Research Dashboard</h1>
-  <p class="hero-sub">
-    Adversarial Verdict Analysis via Coordinated Agent-based Trial Emulation &nbsp;·&nbsp;
-    Powered by <strong style="color:#c7a4f5">Claude Sonnet 4.6</strong> &nbsp;·&nbsp;
-    Strategy Vulnerability Index Validation Study
-  </p>
-</div>
-""", unsafe_allow_html=True)
 
 
-# ─── KPI Row ──────────────────────────────────────────────────────────────────
-k1, k2, k3, k4, k5 = st.columns(5)
+def metric_card(label: str, value: str, note: str) -> str:
+    return (
+        '<div class="metric-card">'
+        f'<div class="metric-label">{label}</div>'
+        f'<div class="metric-value">{value}</div>'
+        f'<div class="metric-note">{note}</div>'
+        "</div>"
+    )
 
-with k1:
-    st.markdown(f"""
-    <div class="kpi-card blue">
-      <div class="kpi-icon">🎯</div>
-      <div class="kpi-label">Outcome Alignment</div>
-      <div class="kpi-value">{bm['outcome_alignment_pct']}%</div>
-      <div class="kpi-delta">SVI prediction accuracy</div>
-    </div>""", unsafe_allow_html=True)
 
-with k2:
-    st.markdown(f"""
-    <div class="kpi-card purple">
-      <div class="kpi-icon">📊</div>
-      <div class="kpi-label">Mean Rule Validity</div>
-      <div class="kpi-value">{bm['summary_stats']['mean_rule_validity_rate']}%</div>
-      <div class="kpi-delta">Avg across 50 scenarios</div>
-    </div>""", unsafe_allow_html=True)
+def init_session_state() -> None:
+    st.session_state.setdefault("auth_user", None)
+    st.session_state.setdefault("single_case_brief", "")
+    st.session_state.setdefault("compare_case_brief", "")
+    st.session_state.setdefault("_last_single_scenario", "Custom brief")
+    st.session_state.setdefault("_last_compare_scenario", "Custom brief")
+    st.session_state.setdefault("latest_single_result", None)
+    st.session_state.setdefault("latest_comparison", None)
+    st.session_state.setdefault("latest_batch_result", None)
 
-with k3:
-    st.markdown(f"""
-    <div class="kpi-card green">
-      <div class="kpi-icon">↕️</div>
-      <div class="kpi-label">Mean Divergence</div>
-      <div class="kpi-value">{bm['summary_stats']['mean_divergence']}</div>
-      <div class="kpi-delta">Argument spread (0–1)</div>
-    </div>""", unsafe_allow_html=True)
 
-with k4:
-    st.markdown(f"""
-    <div class="kpi-card amber">
-      <div class="kpi-icon">📉</div>
-      <div class="kpi-label">Winner Avg SVI</div>
-      <div class="kpi-value">{wx['mean_winner_svi']}%</div>
-      <div class="kpi-delta">Lower = stronger position</div>
-    </div>""", unsafe_allow_html=True)
+@st.cache_resource(show_spinner=False)
+def get_store() -> SupabaseStore:
+    return SupabaseStore()
 
-with k5:
-    st.markdown(f"""
-    <div class="kpi-card red">
-      <div class="kpi-icon">📈</div>
-      <div class="kpi-label">Loser Avg SVI</div>
-      <div class="kpi-value">{wx['mean_loser_svi']}%</div>
-      <div class="kpi-delta">p = {wx['p_value']:.2e} (significant)</div>
-    </div>""", unsafe_allow_html=True)
 
-st.markdown("")
+@st.cache_data(show_spinner=False)
+def load_scenarios() -> dict[str, dict]:
+    scenarios = {"Custom brief": {"case_brief": "", "ground_truth_outcome": None}}
+    for file_path in sorted(SCENARIOS_DIR.glob("*.json")):
+        with file_path.open(encoding="utf-8") as handle:
+            scenarios[file_path.stem] = json.load(handle)
+    return scenarios
 
-# ─── Wilcoxon Banner ──────────────────────────────────────────────────────────
-st.markdown("""
-<div class="wilcoxon-banner">
-  <span class="wilcoxon-sig">✓ Statistically Significant Result</span>
-  <div style="margin-top:0.5rem; color:#94a3b8; font-size:0.93rem; line-height:1.6;">
-    The Wilcoxon Signed-Rank Test confirms that the <strong style="color:#a5f3fc">Strategy Vulnerability Index (SVI)</strong>
-    reliably discriminates between winning and losing legal strategies across all 50 scenarios.
-    Winners consistently exhibit lower SVI scores than losers
-    (<strong style="color:#4ade80">16.4% vs 40.8%</strong> mean SVI), 
-    with a test statistic of <strong style="color:#e2e8f0">W = 1252.0</strong> and 
-    <strong style="color:#4ade80">p = 5.68 × 10⁻¹³</strong> — far below the α = 0.05 threshold.
-  </div>
-</div>
-""", unsafe_allow_html=True)
 
-# ─── TABS ─────────────────────────────────────────────────────────────────────
-tab_overview, tab_svi, tab_divergence, tab_validity, tab_scenarios, tab_interpret = st.tabs([
-    "📊 Overview", "🎯 SVI Analysis", "↔️ Divergence", "✅ Rule Validity", "🗂️ Per-Scenario", "🔍 Interpretation"
-])
+@st.cache_data(show_spinner=False)
+def load_research_results() -> dict:
+    with RESEARCH_RESULTS_PATH.open(encoding="utf-8") as handle:
+        return json.load(handle)
 
-PLOTLY_DARK = dict(
-    paper_bgcolor="rgba(10,13,20,0)",
-    plot_bgcolor="rgba(15,23,42,0.5)",
-    font=dict(family="Inter", color="#94a3b8"),
-    margin=dict(l=40, r=40, t=50, b=40),
-)
-AXIS_STYLE = dict(gridcolor="rgba(255,255,255,0.05)", showgrid=True, zeroline=False)
 
-def apply_dark(fig, **extra_layout):
-    """Apply dark theme + grid styling to a Plotly figure."""
-    fig.update_layout(**PLOTLY_DARK, **extra_layout)
-    fig.update_xaxes(**AXIS_STYLE)
-    fig.update_yaxes(**AXIS_STYLE)
-    return fig
+def app_user() -> dict | None:
+    return st.session_state.get("auth_user")
 
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 1 — OVERVIEW
-# ══════════════════════════════════════════════════════════════════════════════
-with tab_overview:
-    col_left, col_right = st.columns([3, 2])
 
-    with col_left:
-        st.markdown('<div class="section-header">Outcome Distribution</div>', unsafe_allow_html=True)
+def configured_models() -> list[str]:
+    return [model_id for model_id in AVAILABLE_MODELS if is_model_available(model_id)]
 
-        employer_wins = len(df[df["ground_truth"] == "employer_wins"])
-        employee_wins = len(df[df["ground_truth"] == "employee_wins"])
 
-        fig_donut = go.Figure(go.Pie(
-            labels=["Employer Wins", "Employee Wins"],
-            values=[employer_wins, employee_wins],
-            hole=0.62,
-            marker=dict(colors=["#6366f1", "#f59e0b"], line=dict(color="#0a0d14", width=2)),
-            textfont=dict(size=13, family="Inter"),
-            hovertemplate="<b>%{label}</b><br>Count: %{value}<br>Share: %{percent}<extra></extra>",
-        ))
-        fig_donut.add_annotation(
-            text=f"<b>{data['n_scenarios']}</b><br><span style='color:#64748b'>scenarios</span>",
-            x=0.5, y=0.5, showarrow=False, font=dict(size=18, color="#e2e8f0"),
+def default_model_index(models: list[str]) -> int:
+    default_model = get_default_model()
+    return models.index(default_model) if default_model in models else 0
+
+
+def format_model_name(model_id: str) -> str:
+    info = AVAILABLE_MODELS.get(model_id)
+    if not info:
+        return model_id
+    return f"{info['display']} ({info['provider']})"
+
+
+def friendly_timestamp(value: str | None) -> str:
+    if not value:
+        return "Unknown time"
+    try:
+        cleaned = value.replace("Z", "+00:00")
+        return datetime.fromisoformat(cleaned).strftime("%d %b %Y, %I:%M %p UTC")
+    except Exception:
+        return value
+
+
+def brief_title(case_brief: str, prefix: str = "") -> str:
+    first_line = " ".join(case_brief.strip().split())
+    truncated = first_line[:80] + ("..." if len(first_line) > 80 else "")
+    return f"{prefix}{truncated or 'Untitled case'}"
+
+
+def ensure_scenario_state(state_key: str, marker_key: str, selected_name: str, scenarios: dict[str, dict]) -> None:
+    if st.session_state.get(marker_key) != selected_name:
+        st.session_state[state_key] = scenarios[selected_name].get("case_brief", "")
+        st.session_state[marker_key] = selected_name
+
+
+def pipeline_summary(state: dict, model: str) -> dict:
+    evaluation = state.get("evaluation", {})
+    gap_report = state.get("gap_report", {})
+    return {
+        "model": model,
+        "stronger_side": evaluation.get("stronger_side", "-"),
+        "weaker_side": gap_report.get("weaker_side", "-"),
+        "svi": compute_svi(gap_report),
+        "rule_validity_rate": compute_rule_validity_rate(evaluation),
+        "divergence": compute_adversarial_divergence(
+            state.get("employer_args", {}),
+            state.get("employee_args", {}),
+        ),
+        "warning_count": len(state.get("errors", [])),
+        "steps_completed": state.get("steps_completed", []),
+    }
+
+
+def comparison_summary(comparison: dict) -> dict:
+    winner = best_model_overall(comparison)
+    return {
+        "winner": winner or "-",
+        "models_run": len(comparison.get("models_run", [])),
+        "successful_models": len(
+            [
+                result
+                for result in comparison.get("results", {}).values()
+                if result.get("status") == "success"
+            ],
+        ),
+    }
+
+
+def batch_summary(result: dict, model: str) -> dict:
+    metrics = result.get("batch_metrics", {}).get("summary_stats", {})
+    return {
+        "model": model,
+        "n_successful": result.get("n_successful", 0),
+        "n_scenarios": result.get("n_scenarios", 0),
+        "mean_divergence": metrics.get("mean_divergence", 0),
+        "mean_rule_validity_rate": metrics.get("mean_rule_validity_rate", 0),
+        "outcome_alignment_pct": result.get("batch_metrics", {}).get("outcome_alignment_pct", 0),
+    }
+
+
+def save_run(store: SupabaseStore, *, run_mode: str, title: str, model: str, case_brief: str, summary: dict, result: dict) -> None:
+    user = app_user()
+    if not user:
+        return
+    status = "warning" if summary.get("warning_count", 0) else "success"
+    if run_mode == "compare":
+        status = "success"
+    try:
+        store.save_analysis(
+            user_id=user["id"],
+            title=title,
+            model=model,
+            run_mode=run_mode,
+            status=status,
+            case_brief=case_brief,
+            summary=summary,
+            result=result,
+            errors=result.get("errors", []) if isinstance(result, dict) else [],
         )
-        apply_dark(fig_donut,
-            showlegend=True,
-            legend=dict(orientation="h", yanchor="bottom", y=-0.12, xanchor="center", x=0.5,
-                        font=dict(color="#94a3b8")),
-            height=320,
+    except Exception as exc:
+        st.warning(f"Run finished, but saving to Supabase failed: {exc}")
+
+
+def render_claims(label: str, claims: list[dict]) -> None:
+    st.markdown(f"#### {label}")
+    if not claims:
+        st.info("No claims were returned for this side.")
+        return
+    for claim in claims:
+        st.markdown(
+            f"""
+            <div class="claim-card">
+                <div class="claim-title">[{claim.get("claim_id", "-")}] {claim.get("issue", "Untitled issue")}</div>
+                <div><strong>Rule:</strong> {claim.get("rule", "-")}</div>
+                <div><strong>Cited Case:</strong> {claim.get("cited_case", "-")}</div>
+                <div><strong>Application:</strong> {claim.get("application", "-")}</div>
+                <div><strong>Conclusion:</strong> {claim.get("conclusion", "-")}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
-        st.plotly_chart(fig_donut, use_container_width=True)
 
-        # SVI gap bar chart
-        st.markdown('<div class="section-header">SVI Gap: Winner vs Loser (All 50 Scenarios)</div>', unsafe_allow_html=True)
 
-        fig_gap = go.Figure()
-        sorted_df = df_filtered.sort_values("svi_gap", ascending=False)
-        colors = ["#4ade80" if c else "#f87171" for c in sorted_df["correct"]]
+def render_single_result(model: str, state: dict) -> None:
+    summary = pipeline_summary(state, model)
+    evaluation = state.get("evaluation", {})
+    gap_report = state.get("gap_report", {})
+    parsed_case = state.get("parsed_case", {})
 
-        fig_gap.add_trace(go.Bar(
-            x=sorted_df["scenario"],
-            y=sorted_df["svi_gap"],
-            marker=dict(color=colors, opacity=0.85, line=dict(width=0)),
-            hovertemplate="<b>%{x}</b><br>SVI Gap: %{y:.1f}%<extra></extra>",
-        ))
-        apply_dark(fig_gap,
-            height=300,
-            title=dict(text="Loser SVI − Winner SVI (green = correct prediction)", font=dict(size=13)),
+    st.markdown("### Latest Analysis")
+    st.markdown(
+        "<div class='metric-grid'>"
+        + metric_card("Model", format_model_name(model), "Active analysis model")
+        + metric_card("Stronger Side", str(summary["stronger_side"]).title(), "Higher average IRAC score")
+        + metric_card("SVI", f"{summary['svi']}%", "Lower is strategically safer")
+        + metric_card("Rule Validity", f"{summary['rule_validity_rate']}%", "Verified citation rate")
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+
+    if state.get("errors"):
+        st.warning("Pipeline finished with warnings: " + "; ".join(state["errors"]))
+
+    overview_tab, arguments_tab, gaps_tab, raw_tab = st.tabs(
+        ["Case Map", "Arguments", "Gap Report", "Raw JSON"],
+    )
+
+    with overview_tab:
+        left, right = st.columns(2)
+        with left:
+            st.markdown("#### Parsed Case")
+            st.write(
+                {
+                    "plaintiff": parsed_case.get("plaintiff"),
+                    "defendant": parsed_case.get("defendant"),
+                    "employment_type": parsed_case.get("employment_type"),
+                    "termination_reason": parsed_case.get("termination_reason"),
+                    "jurisdiction": parsed_case.get("jurisdiction"),
+                },
+            )
+            st.markdown("#### Key Facts")
+            st.write(parsed_case.get("facts", []))
+        with right:
+            st.markdown("#### Evaluation Snapshot")
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "Side": "Employer",
+                            "Average Score": evaluation.get("employer_avg", 0),
+                            "Issue Clarity": evaluation.get("employer_dimension_avg", {}).get("issue_clarity", 0),
+                            "Rule Validity": evaluation.get("employer_dimension_avg", {}).get("rule_validity", 0),
+                            "Application Logic": evaluation.get("employer_dimension_avg", {}).get("application_logic", 0),
+                            "Rebuttal Coverage": evaluation.get("employer_dimension_avg", {}).get("rebuttal_coverage", 0),
+                        },
+                        {
+                            "Side": "Employee",
+                            "Average Score": evaluation.get("employee_avg", 0),
+                            "Issue Clarity": evaluation.get("employee_dimension_avg", {}).get("issue_clarity", 0),
+                            "Rule Validity": evaluation.get("employee_dimension_avg", {}).get("rule_validity", 0),
+                            "Application Logic": evaluation.get("employee_dimension_avg", {}).get("application_logic", 0),
+                            "Rebuttal Coverage": evaluation.get("employee_dimension_avg", {}).get("rebuttal_coverage", 0),
+                        },
+                    ],
+                ),
+                hide_index=True,
+                use_container_width=True,
+            )
+
+    with arguments_tab:
+        employer_col, employee_col = st.columns(2)
+        with employer_col:
+            render_claims("Employer Claims", state.get("employer_args", {}).get("claims", []))
+        with employee_col:
+            render_claims("Employee Claims", state.get("employee_args", {}).get("claims", []))
+
+    with gaps_tab:
+        st.markdown(
+            "<div class='metric-grid'>"
+            + metric_card("Weaker Side", str(gap_report.get("weaker_side", "-")).title(), "Side with greater vulnerability")
+            + metric_card("Unrebutted Claims", f"{gap_report.get('unrebutted_count', 0)}", "Claims left insufficiently addressed")
+            + metric_card("Top Priority", gap_report.get("top_priority_action", "-"), "Most important next move")
+            + metric_card("Warnings", str(len(state.get("errors", []))), "Pipeline execution warnings")
+            + "</div>",
+            unsafe_allow_html=True,
         )
-        fig_gap.update_xaxes(tickangle=45, tickfont=dict(size=8))
-        st.plotly_chart(fig_gap, use_container_width=True)
+        if gap_report.get("overall_strategy_assessment"):
+            st.info(gap_report["overall_strategy_assessment"])
+        for gap in sorted(gap_report.get("gaps", []), key=lambda item: item.get("gap_rank", 999)):
+            with st.expander(f"Gap #{gap.get('gap_rank', '?')} - {gap.get('severity', 'UNKNOWN')}"):
+                st.write(
+                    {
+                        "opponent_issue": gap.get("opponent_issue"),
+                        "opponent_rule": gap.get("opponent_rule"),
+                        "why_dangerous": gap.get("why_dangerous"),
+                        "suggested_counter": gap.get("suggested_counter"),
+                        "suggested_case_type": gap.get("suggested_case_type"),
+                    },
+                )
 
-    with col_right:
-        st.markdown('<div class="section-header">Key Findings</div>', unsafe_allow_html=True)
+    with raw_tab:
+        st.json(state)
 
-        st.markdown("""
-<div class="insight-box">
-  <div class="insight-title" style="color:#93c5fd">🏆 Model Performance</div>
-  <div class="insight-body">
-    Claude Sonnet 4.6 achieved <span class="insight-good">94% outcome alignment</span> across
-    50 wrongful termination scenarios, correctly predicting the winning party in
-    <span class="insight-highlight">47 of 50 cases</span> based purely on SVI ranking.
-  </div>
-</div>
 
-<div class="insight-box">
-  <div class="insight-title" style="color:#a78bfa">📐 SVI Discriminability</div>
-  <div class="insight-body">
-    The mean SVI gap between losers and winners is
-    <span class="insight-good">+24.4 percentage points</span>
-    (40.8% vs 16.4%), confirmed as statistically significant at
-    <span class="insight-highlight">p = 5.68 × 10⁻¹³</span>.
-    This validates SVI as a powerful legal-strategy metric.
-  </div>
-</div>
+def render_comparison_result(comparison: dict) -> None:
+    winner = best_model_overall(comparison)
+    results = comparison.get("results", {})
 
-<div class="insight-box">
-  <div class="insight-title" style="color:#34d399">📜 Legal Rule Quality</div>
-  <div class="insight-body">
-    The system maintained a <span class="insight-good">94.5% mean rule validity rate</span>,
-    with 8 scenarios hitting <span class="insight-highlight">100% validity</span>.
-    The lowest observed was <span class="insight-warn">84.2%</span>
-    (Scenario 46), still above a strong threshold.
-  </div>
-</div>
+    st.markdown("### Latest Comparison")
+    st.markdown(
+        "<div class='metric-grid'>"
+        + metric_card("Best Overall", format_model_name(winner) if winner else "-", "Weighted benchmark winner")
+        + metric_card("Models Run", str(len(comparison.get("models_run", []))), "Models included in the comparison")
+        + metric_card(
+            "Successful Runs",
+            str(len([item for item in results.values() if item.get("status") == "success"])),
+            "Models that completed without fatal errors",
+        )
+        + metric_card("Comparison Mode", "Multi-model", "Shared case brief benchmark"),
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
-<div class="insight-box">
-  <div class="insight-title" style="color:#fbbf24">↔️ Adversarial Divergence</div>
-  <div class="insight-body">
-    Mean divergence of <span class="insight-highlight">0.122</span> indicates
-    balanced adversarial argument construction. Scenario 30 had the highest
-    divergence (<span class="insight-warn">0.242</span>), suggesting the most
-    contested legal framing; Scenario 06 the lowest (<span class="insight-good">0.028</span>).
-  </div>
-</div>
-""", unsafe_allow_html=True)
+    summary_df = pd.DataFrame(comparison.get("summary_table", []))
+    if not summary_df.empty:
+        st.dataframe(summary_df, hide_index=True, use_container_width=True)
 
-        # Accuracy gauge
-        st.markdown('<div class="section-header">Prediction Accuracy Gauge</div>', unsafe_allow_html=True)
-        fig_gauge = go.Figure(go.Indicator(
-            mode="gauge+number+delta",
-            value=accuracy,
-            delta={"reference": 80, "increasing": {"color": "#4ade80"}},
-            number={"suffix": "%", "font": {"size": 40, "color": "#e2e8f0", "family": "Inter"}},
-            gauge={
-                "axis": {"range": [0, 100], "tickcolor": "#475569", "tickfont": {"color": "#475569"}},
-                "bar": {"color": "#6366f1", "thickness": 0.25},
-                "bgcolor": "rgba(255,255,255,0.03)",
-                "borderwidth": 0,
-                "steps": [
-                    {"range": [0, 70], "color": "rgba(239,68,68,0.15)"},
-                    {"range": [70, 85], "color": "rgba(245,158,11,0.15)"},
-                    {"range": [85, 100], "color": "rgba(16,185,129,0.15)"},
-                ],
-                "threshold": {"line": {"color": "#4ade80", "width": 3}, "thickness": 0.8, "value": accuracy},
+    successful = {
+        model_id: result
+        for model_id, result in results.items()
+        if result.get("status") == "success"
+    }
+    if len(successful) >= 2:
+        chart_df = pd.DataFrame(
+            [
+                {
+                    "Model": format_model_name(model_id),
+                    "Overall Score": result.get("overall_avg_score", 0),
+                    "Rule Validity": result.get("rule_validity_rate", 0),
+                    "SVI": result.get("svi", 0),
+                    "Latency": result.get("total_latency_s", 0),
+                }
+                for model_id, result in successful.items()
+            ],
+        )
+        left, right = st.columns(2)
+        with left:
+            st.plotly_chart(
+                px.bar(
+                    chart_df,
+                    x="Model",
+                    y="Overall Score",
+                    color="Model",
+                    title="Overall IRAC Score",
+                ),
+                use_container_width=True,
+            )
+        with right:
+            st.plotly_chart(
+                px.bar(
+                    chart_df,
+                    x="Model",
+                    y="SVI",
+                    color="Model",
+                    title="Strategy Vulnerability Index",
+                ),
+                use_container_width=True,
+            )
+
+    for model_id in comparison.get("models_run", []):
+        result = results.get(model_id, {})
+        with st.expander(format_model_name(model_id)):
+            if result.get("status") != "success":
+                st.error(result.get("error_message", "Unknown error"))
+            else:
+                render_single_result(model_id, result.get("_state", {}))
+
+
+def render_batch_result(model: str, validation: dict) -> None:
+    batch_metrics = validation.get("batch_metrics", {})
+    summary_stats = batch_metrics.get("summary_stats", {})
+    wilcoxon = validation.get("wilcoxon_test", {})
+
+    st.markdown("### Latest Batch Validation")
+    st.markdown(
+        "<div class='metric-grid'>"
+        + metric_card("Model", format_model_name(model), "Validation model")
+        + metric_card("Scenarios", str(validation.get("n_successful", 0)), "Successful scenario executions")
+        + metric_card("Alignment", f"{batch_metrics.get('outcome_alignment_pct', 0)}%", "Expected loser had higher SVI")
+        + metric_card("Rule Validity", f"{summary_stats.get('mean_rule_validity_rate', 0)}%", "Mean verified citation rate")
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+
+    if "p_value" in wilcoxon:
+        st.info(
+            f"Wilcoxon statistic {wilcoxon['statistic']} with p-value {wilcoxon['p_value']} "
+            f"across {wilcoxon['n_pairs']} paired outcomes.",
+        )
+    elif wilcoxon.get("error"):
+        st.warning(wilcoxon["error"])
+
+    rows = []
+    for case in validation.get("per_case_results", []):
+        svi = case.get("svi", {})
+        rows.append(
+            {
+                "Case": case.get("case_id"),
+                "Ground Truth": case.get("ground_truth"),
+                "Employer SVI": svi.get("employer_svi", 0),
+                "Employee SVI": svi.get("employee_svi", 0),
+                "Divergence": case.get("divergence"),
+                "Rule Validity": case.get("rule_validity_rate"),
             },
-        ))
-        apply_dark(fig_gauge, height=240)
-        st.plotly_chart(fig_gauge, use_container_width=True)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 2 — SVI ANALYSIS
-# ══════════════════════════════════════════════════════════════════════════════
-with tab_svi:
-    st.markdown('<div class="section-header">Strategy Vulnerability Index (SVI) — Employer vs Employee</div>', unsafe_allow_html=True)
-
-    # Grouped bar chart
-    scenario_nums = [r["scenario"] for r in rows]
-    fig_svi = go.Figure()
-    fig_svi.add_trace(go.Bar(
-        name="Employer SVI",
-        x=df_filtered["scenario"],
-        y=df_filtered["employer_svi"],
-        marker=dict(color="#6366f1", opacity=0.8),
-        hovertemplate="<b>%{x}</b><br>Employer SVI: %{y:.1f}%<extra></extra>",
-    ))
-    fig_svi.add_trace(go.Bar(
-        name="Employee SVI",
-        x=df_filtered["scenario"],
-        y=df_filtered["employee_svi"],
-        marker=dict(color="#f59e0b", opacity=0.8),
-        hovertemplate="<b>%{x}</b><br>Employee SVI: %{y:.1f}%<extra></extra>",
-    ))
-    apply_dark(fig_svi,
-        barmode="group",
-        height=380,
-        title=dict(text="SVI per Scenario — Lower SVI indicates a stronger legal position", font=dict(size=13)),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="#94a3b8")),
-    )
-    fig_svi.update_xaxes(tickangle=45, tickfont=dict(size=7.5))
-    st.plotly_chart(fig_svi, use_container_width=True)
-
-    col_a, col_b = st.columns(2)
-
-    with col_a:
-        # Box plot
-        st.markdown('<div class="section-header">SVI Distribution by Outcome</div>', unsafe_allow_html=True)
-        fig_box = go.Figure()
-        for outcome, color, label in [
-            ("employer_wins", "#6366f1", "Employer Wins"),
-            ("employee_wins", "#f59e0b", "Employee Wins"),
-        ]:
-            sub = df[df["ground_truth"] == outcome]
-            # winner svi = the winning party's SVI
-            fig_box.add_trace(go.Box(
-                y=sub["winner_svi"],
-                name=f"{label} · Winner SVI",
-                marker_color=color,
-                line_color=color,
-                fillcolor=f"rgba({int(color[1:3],16)},{int(color[3:5],16)},{int(color[5:7],16)},0.15)",
-                boxmean=True,
-            ))
-            fig_box.add_trace(go.Box(
-                y=sub["loser_svi"],
-                name=f"{label} · Loser SVI",
-                marker_color="#ef4444",
-                line_color="#ef4444",
-                fillcolor="rgba(239,68,68,0.1)",
-                boxmean=True,
-            ))
-        apply_dark(fig_box, height=380,
-            title=dict(text="Winner vs Loser SVI distributions", font=dict(size=12)))
-        st.plotly_chart(fig_box, use_container_width=True)
-
-    with col_b:
-        # Scatter: SVI vs Divergence
-        st.markdown('<div class="section-header">SVI Gap vs Divergence</div>', unsafe_allow_html=True)
-        fig_scatter = go.Figure()
-        cmap = {"employer_wins": "#6366f1", "employee_wins": "#f59e0b"}
-        for outcome in ["employer_wins", "employee_wins"]:
-            sub = df_filtered[df_filtered["ground_truth"] == outcome]
-            fig_scatter.add_trace(go.Scatter(
-                x=sub["divergence"],
-                y=sub["svi_gap"],
-                mode="markers",
-                name=outcome.replace("_", " ").title(),
-                marker=dict(size=10, color=cmap[outcome], opacity=0.8,
-                            line=dict(width=1, color="rgba(255,255,255,0.2)")),
-                hovertemplate="<b>%{text}</b><br>Divergence: %{x:.3f}<br>SVI Gap: %{y:.1f}%<extra></extra>",
-                text=sub["scenario"],
-            ))
-        # Trend line
-        from numpy.polynomial.polynomial import polyfit
-        import numpy as np
-        x_all = df_filtered["divergence"].values
-        y_all = df_filtered["svi_gap"].values
-        if len(x_all) > 2:
-            coefs = polyfit(x_all, y_all, 1)
-            x_line = np.linspace(x_all.min(), x_all.max(), 100)
-            y_line = coefs[0] + coefs[1] * x_line
-            fig_scatter.add_trace(go.Scatter(
-                x=x_line, y=y_line, mode="lines",
-                name="Trend", line=dict(color="rgba(255,255,255,0.25)", dash="dash", width=1.5),
-            ))
-        apply_dark(fig_scatter,
-            height=380,
-            title=dict(text="Higher divergence ↔ Larger SVI gap — contested cases show clearer vulnerability", font=dict(size=12)),
         )
-        fig_scatter.update_xaxes(title="Adversarial Divergence")
-        fig_scatter.update_yaxes(title="SVI Gap (Loser − Winner) %")
-        st.plotly_chart(fig_scatter, use_container_width=True)
-
-    # Mean SVI Comparison
-    st.markdown('<div class="section-header">Statistical SVI Comparison</div>', unsafe_allow_html=True)
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Mean Winner SVI", f"{wx['mean_winner_svi']}%", "Lower = stronger")
-    c2.metric("Mean Loser SVI",  f"{wx['mean_loser_svi']}%",  f"+{wx['mean_loser_svi']-wx['mean_winner_svi']:.1f}% vs winner")
-    c3.metric("Wilcoxon W",  str(wx["statistic"]))
-    c4.metric("p-value", f"{wx['p_value']:.2e}", "Significant ✓" if wx["significant"] else "Not significant")
+    if rows:
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 3 — DIVERGENCE
-# ══════════════════════════════════════════════════════════════════════════════
-with tab_divergence:
-    st.markdown('<div class="section-header">Adversarial Divergence Across All Scenarios</div>', unsafe_allow_html=True)
+def render_history_tab(store: SupabaseStore) -> None:
+    st.markdown("### Saved History")
+    records = store.list_analyses(app_user()["id"], limit=30)
+    if not records:
+        st.info("You do not have any saved analyses yet.")
+        return
 
-    fig_div = go.Figure()
-    div_sorted = df_filtered.sort_values("divergence", ascending=False)
-    div_colors = [
-        "#ef4444" if v >= 0.20 else ("#f59e0b" if v >= 0.15 else "#6366f1")
-        for v in div_sorted["divergence"]
-    ]
-    fig_div.add_trace(go.Bar(
-        x=div_sorted["scenario"],
-        y=div_sorted["divergence"],
-        marker=dict(color=div_colors, opacity=0.85),
-        hovertemplate="<b>%{x}</b><br>Divergence: %{y:.3f}<extra></extra>",
-    ))
-    fig_div.add_hline(y=0.122, line_color="rgba(255,255,255,0.3)", line_dash="dash",
-                       annotation_text=f"Mean: 0.122", annotation_position="top right",
-                       annotation_font_color="#94a3b8")
-    apply_dark(fig_div,
-        height=350,
-        title=dict(text="🔴 High (≥0.20)  🟡 Elevated (≥0.15)  🔵 Normal (<0.15)", font=dict(size=12)),
+    lookup = {record["id"]: record for record in records}
+    selected_id = st.selectbox(
+        "Open a saved run",
+        options=list(lookup),
+        format_func=lambda run_id: (
+            f"{friendly_timestamp(lookup[run_id].get('created_at'))} | "
+            f"{lookup[run_id].get('run_mode', 'single').title()} | "
+            f"{lookup[run_id].get('title', 'Untitled run')}"
+        ),
     )
-    fig_div.update_xaxes(tickangle=45, tickfont=dict(size=7.5))
-    st.plotly_chart(fig_div, use_container_width=True)
+    record = lookup[selected_id]
+    summary = record.get("summary", {})
 
-    col_da, col_db = st.columns(2)
-    with col_da:
-        # Histogram
-        st.markdown('<div class="section-header">Divergence Distribution</div>', unsafe_allow_html=True)
-        fig_hist = go.Figure(go.Histogram(
-            x=df_filtered["divergence"],
-            nbinsx=15,
-            marker=dict(color="#6366f1", opacity=0.75, line=dict(color="#0a0d14", width=1)),
-            hovertemplate="Range: %{x}<br>Count: %{y}<extra></extra>",
-        ))
-        apply_dark(fig_hist,
-            height=300,
-            title=dict(text="Frequency distribution of adversarial divergence scores", font=dict(size=12)),
+    st.markdown(
+        "<div class='metric-grid'>"
+        + metric_card("Saved Run", record.get("title", "-"), friendly_timestamp(record.get("created_at")))
+        + metric_card("Mode", str(record.get("run_mode", "-")).title(), f"Status: {record.get('status', '-')}")
+        + metric_card("Model", format_model_name(record.get("model", "-")), "Stored with the run")
+        + metric_card("Highlights", ", ".join(f"{key}: {value}" for key, value in list(summary.items())[:2]) or "-", "Saved summary snapshot")
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+
+    if record.get("run_mode") == "compare":
+        render_comparison_result(record.get("result", {}))
+    elif record.get("run_mode") == "batch":
+        render_batch_result(record.get("model", "-"), record.get("result", {}))
+    else:
+        render_single_result(record.get("model", "-"), record.get("result", {}))
+
+
+def render_research_tab() -> None:
+    research = load_research_results()
+    batch_metrics = research.get("batch_metrics", {})
+    summary_stats = batch_metrics.get("summary_stats", {})
+    wilcoxon = research.get("wilcoxon_test", {})
+
+    st.markdown(
+        """
+        <div class="hero">
+            <span class="eyebrow">Research Snapshot</span>
+            <h2>Benchmark data ships with the app</h2>
+            <p class="hero-copy">
+                This tab surfaces the bundled research dataset so the deployed app still has a useful narrative layer
+                even before a user runs their first live analysis.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<div class='metric-grid'>"
+        + metric_card("Outcome Alignment", f"{batch_metrics.get('outcome_alignment_pct', 0)}%", "Held-out scenario agreement")
+        + metric_card("Mean Divergence", str(summary_stats.get("mean_divergence", 0)), "Adversarial separation score")
+        + metric_card("Mean Rule Validity", f"{summary_stats.get('mean_rule_validity_rate', 0)}%", "Average verified citation rate")
+        + metric_card(
+            "Wilcoxon p-value",
+            str(wilcoxon.get("p_value", "-")),
+            "Lower than 0.05 suggests significant winner/loser separation",
         )
-        fig_hist.update_xaxes(title="Divergence Score")
-        fig_hist.update_yaxes(title="Scenario Count")
-        st.plotly_chart(fig_hist, use_container_width=True)
+        + "</div>",
+        unsafe_allow_html=True,
+    )
 
-    with col_db:
-        # Divergence vs Rule Validity
-        st.markdown('<div class="section-header">Divergence vs Rule Validity</div>', unsafe_allow_html=True)
-        fig_dv = go.Figure()
-        for outcome, color in [("employer_wins","#6366f1"),("employee_wins","#f59e0b")]:
-            sub = df_filtered[df_filtered["ground_truth"]==outcome]
-            fig_dv.add_trace(go.Scatter(
-                x=sub["divergence"], y=sub["rule_validity"],
-                mode="markers", name=outcome.replace("_"," ").title(),
-                marker=dict(size=9, color=color, opacity=0.8),
-                hovertemplate="<b>%{text}</b><br>Divergence: %{x:.3f}<br>Rule Validity: %{y:.1f}%<extra></extra>",
-                text=sub["scenario"],
-            ))
-        apply_dark(fig_dv,
-            height=300,
-            title=dict(text="No strong correlation — high divergence ≠ low rule quality", font=dict(size=12)),
+    case_rows = []
+    for case in research.get("per_case_results", []):
+        svi = case.get("svi", {})
+        case_rows.append(
+            {
+                "Case": case.get("case_id"),
+                "Ground Truth": case.get("ground_truth"),
+                "Employer SVI": svi.get("employer_svi", 0),
+                "Employee SVI": svi.get("employee_svi", 0),
+                "Divergence": case.get("divergence", 0),
+                "Rule Validity": case.get("rule_validity_rate", 0),
+            },
         )
-        fig_dv.update_xaxes(title="Adversarial Divergence")
-        fig_dv.update_yaxes(title="Rule Validity Rate (%)")
-        st.plotly_chart(fig_dv, use_container_width=True)
 
-    # Stats
-    st.markdown('<div class="section-header">Divergence Statistics</div>', unsafe_allow_html=True)
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Mean",   f"{df['divergence'].mean():.3f}")
-    c2.metric("Median", f"{df['divergence'].median():.3f}")
-    c3.metric("Std Dev",f"{df['divergence'].std():.3f}")
-    c4.metric("Max",    f"{df['divergence'].max():.3f}", f"Scenario {df.loc[df['divergence'].idxmax(),'scenario']}")
-    c5.metric("Min",    f"{df['divergence'].min():.3f}", f"Scenario {df.loc[df['divergence'].idxmin(),'scenario']}")
+    if case_rows:
+        case_df = pd.DataFrame(case_rows)
+        left, right = st.columns(2)
+        with left:
+            st.plotly_chart(
+                px.scatter(
+                    case_df,
+                    x="Divergence",
+                    y="Rule Validity",
+                    color="Ground Truth",
+                    hover_name="Case",
+                    title="Divergence vs Rule Validity",
+                ),
+                use_container_width=True,
+            )
+        with right:
+            svi_long = case_df.melt(
+                id_vars=["Case", "Ground Truth", "Divergence", "Rule Validity"],
+                value_vars=["Employer SVI", "Employee SVI"],
+                var_name="Side",
+                value_name="SVI",
+            )
+            st.plotly_chart(
+                px.box(
+                    svi_long,
+                    x="Side",
+                    y="SVI",
+                    color="Side",
+                    title="SVI Distribution by Side",
+                ),
+                use_container_width=True,
+            )
+        st.dataframe(case_df, use_container_width=True, hide_index=True)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 4 — RULE VALIDITY
-# ══════════════════════════════════════════════════════════════════════════════
-with tab_validity:
-    st.markdown('<div class="section-header">Rule Validity Rate — Legal Accuracy per Scenario</div>', unsafe_allow_html=True)
+def render_setup_tab(store: SupabaseStore) -> None:
+    ok, message = store.healthcheck()
+    provider_rows = []
+    for env_key, provider in (
+        ("OPENAI_API_KEY", "OpenAI"),
+        ("ANTHROPIC_API_KEY", "Anthropic"),
+        ("GOOGLE_API_KEY", "Google"),
+    ):
+        configured = any(
+            provider_env_key_for_model(model_id) == env_key and is_model_available(model_id)
+            for model_id in AVAILABLE_MODELS
+        )
+        provider_rows.append(
+            {
+                "Provider": provider,
+                "Configured": "Yes" if configured else "No",
+                "Key": env_key,
+            },
+        )
 
-    rv_sorted = df_filtered.sort_values("rule_validity", ascending=True)
-    colors_rv = [
-        "#ef4444" if v < 87 else ("#f59e0b" if v < 93 else ("#6366f1" if v < 99 else "#4ade80"))
-        for v in rv_sorted["rule_validity"]
-    ]
-
-    fig_rv = go.Figure(go.Bar(
-        x=rv_sorted["rule_validity"],
-        y=rv_sorted["scenario"],
-        orientation="h",
-        marker=dict(color=colors_rv, opacity=0.85),
-        hovertemplate="<b>%{y}</b><br>Rule Validity: %{x:.1f}%<extra></extra>",
-    ))
-    fig_rv.add_vline(x=94.5, line_color="rgba(255,255,255,0.3)", line_dash="dash",
-                      annotation_text="Mean 94.5%", annotation_position="top right",
-                      annotation_font_color="#94a3b8")
-    apply_dark(fig_rv,
-        height=900,
-        title=dict(text="🟢 Perfect (100%)  🔵 Good (≥93%)  🟡 Acceptable (≥87%)  🔴 Low (<87%)", font=dict(size=12)),
+    st.markdown("### Deployment Checklist")
+    st.markdown(
+        """
+        <div class="panel">
+            <div class="setup-list">
+                1. Create the Supabase tables with the SQL in <code>supabase/schema.sql</code>.<br/>
+                2. Add <code>SUPABASE_URL</code> and <code>SUPABASE_SERVICE_ROLE_KEY</code> to your Streamlit secrets.<br/>
+                3. Add at least one provider key so the pipeline can call an LLM.<br/>
+                4. Optionally build or mount a Chroma index for grounded case retrieval.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-    fig_rv.update_xaxes(title="Rule Validity Rate (%)", range=[80, 101])
-    st.plotly_chart(fig_rv, use_container_width=True)
+    st.dataframe(pd.DataFrame(provider_rows), use_container_width=True, hide_index=True)
 
-    # Perfect vs imperfect
-    col_rv1, col_rv2 = st.columns(2)
-    with col_rv1:
-        perf = df[df["rule_validity"] == 100.0]
-        st.markdown('<div class="section-header">Perfect Validity Scenarios (100%)</div>', unsafe_allow_html=True)
-        for _, r in perf.iterrows():
-            st.markdown(f"✅ **{r['scenario']}** — {r['ground_truth'].replace('_',' ').title()}")
-
-    with col_rv2:
-        low_rv = df[df["rule_validity"] < 90].sort_values("rule_validity")
-        st.markdown('<div class="section-header">Below-Threshold Scenarios (<90%)</div>', unsafe_allow_html=True)
-        for _, r in low_rv.iterrows():
-            st.markdown(f"⚠️ **{r['scenario']}** — {r['rule_validity']}% — {r['ground_truth'].replace('_',' ').title()}")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 5 — PER-SCENARIO TABLE
-# ══════════════════════════════════════════════════════════════════════════════
-with tab_scenarios:
-    st.markdown('<div class="section-header">Full Per-Scenario Results</div>', unsafe_allow_html=True)
-
-    display_df = df_filtered[[
-        "scenario","ground_truth","employer_svi","employee_svi",
-        "svi_gap","divergence","rule_validity","correct"
-    ]].copy()
-    display_df.columns = [
-        "Scenario","Ground Truth","Employer SVI","Employee SVI",
-        "SVI Gap","Divergence","Rule Validity %","Correct ✓"
-    ]
-    display_df["Ground Truth"] = display_df["Ground Truth"].str.replace("_"," ").str.title()
-    display_df["Correct ✓"] = display_df["Correct ✓"].map({True:"✅", False:"❌"})
-
-    def color_svi(val):
-        if val < 15:   return "background-color:rgba(74,222,128,0.12);color:#4ade80"
-        if val < 30:   return "background-color:rgba(99,102,241,0.12);color:#a5b4fc"
-        if val < 50:   return "background-color:rgba(245,158,11,0.12);color:#fbbf24"
-        return               "background-color:rgba(239,68,68,0.12);color:#f87171"
-
-    styled = (
-        display_df.style
-        .applymap(color_svi, subset=["Employer SVI", "Employee SVI"])
-        .background_gradient(subset=["Divergence"], cmap="Blues")
-        .background_gradient(subset=["Rule Validity %"], cmap="Greens")
-        .set_properties(**{
-            "font-family": "JetBrains Mono, monospace",
-            "font-size": "12px",
-        })
+    st.markdown(
+        "<div class='metric-grid'>"
+        + metric_card("Supabase", "Connected" if ok else "Issue", message)
+        + metric_card("RAG Index", "Ready" if index_ready() else "Not Ready", f"{collection_size()} chunks detected")
+        + metric_card("Default Model", get_default_model(), "Model used when none is selected")
+        + metric_card("Recommended Entry Point", "streamlit run app.py", "Single deployable Streamlit app")
+        + "</div>",
+        unsafe_allow_html=True,
     )
-    st.dataframe(styled, use_container_width=True, height=650)
 
-    # Heatmap
-    st.markdown('<div class="section-header">SVI Heatmap — All 50 Scenarios</div>', unsafe_allow_html=True)
-    n = 10
-    n_rows = math.ceil(len(df) / n)
+    st.markdown("#### Secrets Template")
+    st.code(SECRETS_EXAMPLE_PATH.read_text(encoding="utf-8"), language="toml")
 
-    employer_mat = df["employer_svi"].values.reshape(n_rows, n)
-    employee_mat = df["employee_svi"].values.reshape(n_rows, n)
+    st.markdown("#### Supabase Schema")
+    st.code(SCHEMA_PATH.read_text(encoding="utf-8"), language="sql")
 
-    fig_hm = make_subplots(rows=1, cols=2, subplot_titles=("Employer SVI", "Employee SVI"),
-                            horizontal_spacing=0.06)
-    col_labels = [f"S{10*i+1}-{10*i+10}" for i in range(n_rows)]
-    row_labels  = [f"C{i+1}" for i in range(n)]
 
-    for col_idx, (mat, cscale) in enumerate([(employer_mat,"Purples"),(employee_mat,"YlOrRd")], 1):
-        fig_hm.add_trace(go.Heatmap(
-            z=mat,
-            text=[[f"{v:.1f}%" for v in row_] for row_ in mat],
-            texttemplate="%{text}",
-            textfont=dict(size=9),
-            colorscale=cscale,
-            showscale=True,
-            hovertemplate="SVI: %{z:.1f}%<extra></extra>",
-        ), row=1, col=col_idx)
+def render_workspace_tab(store: SupabaseStore) -> None:
+    scenarios = load_scenarios()
+    available_models = configured_models()
 
-    apply_dark(fig_hm,
-        height=320,
-        title=dict(text="Colour intensity = SVI magnitude · Darker = more vulnerable", font=dict(size=12)),
+    single_tab, compare_tab, batch_tab = st.tabs(
+        ["Single Analysis", "Compare Models", "Batch Validation"],
     )
-    st.plotly_chart(fig_hm, use_container_width=True)
+
+    with single_tab:
+        st.markdown("### Analyze a Case")
+        if not available_models:
+            st.error("No model providers are configured yet. Add provider keys in Streamlit secrets first.")
+        scenario_name = st.selectbox("Scenario", options=list(scenarios), key="single_scenario")
+        ensure_scenario_state("single_case_brief", "_last_single_scenario", scenario_name, scenarios)
+
+        selected_model = st.selectbox(
+            "Model",
+            options=available_models or list(AVAILABLE_MODELS),
+            format_func=format_model_name,
+            index=default_model_index(available_models) if available_models else 0,
+        )
+        custom_model = st.text_input(
+            "Custom model id (optional)",
+            placeholder="Use this if your deployment uses a model not listed above.",
+        )
+        effective_model = custom_model.strip() or selected_model
+
+        if scenarios[scenario_name].get("ground_truth_outcome"):
+            st.caption(f"Ground truth for the sample scenario: {scenarios[scenario_name]['ground_truth_outcome']}")
+
+        st.text_area(
+            "Case brief",
+            key="single_case_brief",
+            height=220,
+            placeholder="Describe the employee, employer, facts, evidence, and termination context.",
+        )
+
+        if st.button("Run analysis", type="primary", use_container_width=True):
+            env_key = provider_env_key_for_model(effective_model)
+            if not env_key or not is_model_available(effective_model):
+                st.error(f"The provider key for `{effective_model}` is not configured.")
+            elif not st.session_state["single_case_brief"].strip():
+                st.error("Enter a case brief first.")
+            else:
+                with st.spinner(f"Running the ADVOCATE pipeline with {effective_model}..."):
+                    state = run_pipeline(st.session_state["single_case_brief"], model=effective_model)
+                    st.session_state["latest_single_result"] = {
+                        "model": effective_model,
+                        "state": state,
+                    }
+                    summary = pipeline_summary(state, effective_model)
+                    save_run(
+                        store,
+                        run_mode="single",
+                        title=brief_title(st.session_state["single_case_brief"]),
+                        model=effective_model,
+                        case_brief=st.session_state["single_case_brief"],
+                        summary=summary,
+                        result=state,
+                    )
+
+        latest_single = st.session_state.get("latest_single_result")
+        if latest_single:
+            render_single_result(latest_single["model"], latest_single["state"])
+
+    with compare_tab:
+        st.markdown("### Benchmark Multiple Models")
+        compare_options = available_models if available_models else list(AVAILABLE_MODELS)
+        compare_scenario = st.selectbox("Scenario", options=list(scenarios), key="compare_scenario")
+        ensure_scenario_state("compare_case_brief", "_last_compare_scenario", compare_scenario, scenarios)
+        selected_models = st.multiselect(
+            "Models to compare",
+            options=compare_options,
+            default=compare_options[:2],
+            format_func=format_model_name,
+        )
+        st.text_area(
+            "Shared case brief",
+            key="compare_case_brief",
+            height=200,
+            placeholder="Use the same brief for all selected models.",
+        )
+        if st.button("Run comparison", use_container_width=True):
+            if len(selected_models) < 2:
+                st.error("Select at least two models to compare.")
+            elif not st.session_state["compare_case_brief"].strip():
+                st.error("Enter a case brief to compare.")
+            else:
+                with st.spinner("Running comparison benchmark..."):
+                    comparison = run_comparison(
+                        case_brief=st.session_state["compare_case_brief"],
+                        model_ids=selected_models,
+                    )
+                    st.session_state["latest_comparison"] = comparison
+                    save_run(
+                        store,
+                        run_mode="compare",
+                        title=brief_title(st.session_state["compare_case_brief"], prefix="Comparison - "),
+                        model=", ".join(selected_models),
+                        case_brief=st.session_state["compare_case_brief"],
+                        summary=comparison_summary(comparison),
+                        result=comparison,
+                    )
+
+        latest_comparison = st.session_state.get("latest_comparison")
+        if latest_comparison:
+            render_comparison_result(latest_comparison)
+
+    with batch_tab:
+        st.markdown("### Batch Validation")
+        st.caption("This reruns the held-out scenarios. It is useful for evaluation, but it will cost more tokens.")
+        batch_model = st.selectbox(
+            "Validation model",
+            options=available_models or list(AVAILABLE_MODELS),
+            format_func=format_model_name,
+            key="batch_model",
+        )
+        if st.button("Run batch validation", use_container_width=True):
+            if not is_model_available(batch_model):
+                st.error("Configure the provider key for the selected model first.")
+            else:
+                with st.spinner("Running held-out validation scenarios..."):
+                    validation = run_validation(str(SCENARIOS_DIR), model=batch_model)
+                    st.session_state["latest_batch_result"] = {
+                        "model": batch_model,
+                        "result": validation,
+                    }
+                    save_run(
+                        store,
+                        run_mode="batch",
+                        title=f"Batch validation - {batch_model}",
+                        model=batch_model,
+                        case_brief="Held-out validation set",
+                        summary=batch_summary(validation, batch_model),
+                        result=validation,
+                    )
+
+        latest_batch = st.session_state.get("latest_batch_result")
+        if latest_batch:
+            render_batch_result(latest_batch["model"], latest_batch["result"])
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 6 — INTERPRETATION
-# ══════════════════════════════════════════════════════════════════════════════
-with tab_interpret:
-    st.markdown('<div class="section-header">Research Interpretation & Findings</div>', unsafe_allow_html=True)
+def render_sidebar(store: SupabaseStore) -> None:
+    user = app_user()
+    ok, message = store.healthcheck()
+    with st.sidebar:
+        st.markdown("## ADVOCATE")
+        st.caption("Authenticated legal strategy workspace")
+        st.markdown(f"**Signed in as:** `{user['username']}`")
+        if st.button("Log out", use_container_width=True):
+            st.session_state["auth_user"] = None
+            st.session_state["latest_single_result"] = None
+            st.session_state["latest_comparison"] = None
+            st.session_state["latest_batch_result"] = None
+            st.rerun()
 
-    st.markdown("""
-<div class="insight-box">
-  <div class="insight-title" style="color:#93c5fd; font-size:1rem;">1. The SVI is a Statistically Valid Discriminator</div>
-  <div class="insight-body">
-    The Wilcoxon Signed-Rank Test result of <span class="insight-highlight">W = 1252, p = 5.68 × 10⁻¹³</span>
-    provides near-conclusive evidence that the Strategy Vulnerability Index separates legal winners from losers.
-    This is not a marginal result — the effect size is substantial.
-    Winners averaged <span class="insight-good">16.4% SVI</span> compared to
-    <span class="insight-danger">40.8% SVI</span> for losers, a gap of
-    <span class="insight-warn">24.4 percentage points</span>.
-    In 94% of the 50 simulated cases, the party with the lower SVI corresponded to the factual winner —
-    a strong predictive signal with direct applicability to pre-trial legal strategy.
-  </div>
-</div>
+        st.divider()
+        st.markdown("### System Status")
+        st.write(
+            {
+                "Supabase": "Connected" if ok else f"Issue: {message}",
+                "RAG index": f"{collection_size()} chunks" if index_ready() else "Not built",
+                "Configured models": len(configured_models()),
+            },
+        )
 
-<div class="insight-box">
-  <div class="insight-title" style="color:#a78bfa; font-size:1rem;">2. Rule Validity Demonstrates Legal Coherence of Agent Reasoning</div>
-  <div class="insight-body">
-    A mean rule validity rate of <span class="insight-good">94.5%</span> across all 50 scenarios confirms
-    that Claude Sonnet 4.6 applies substantive employment law rules accurately at scale.
-    Eight scenarios achieved a perfect <span class="insight-good">100% validity</span> score,
-    demonstrating that the agent-based reasoning pipeline is not merely pattern-matching —
-    it constructs internally consistent IRAC arguments grounded in valid legal propositions.
-    The minimum observed validity of <span class="insight-warn">84.2%</span> in Scenario 46 represents the
-    worst-case floor — still a high threshold for an automated multi-agent system.
-  </div>
-</div>
 
-<div class="insight-box">
-  <div class="insight-title" style="color:#34d399; font-size:1rem;">3. Adversarial Divergence Captures Case Complexity</div>
-  <div class="insight-body">
-    Divergence scores ranged from <span class="insight-good">0.028</span> (Scenario 06, near-unanimous framing)
-    to <span class="insight-danger">0.242</span> (Scenario 30, highly contested framing).
-    The mean of <span class="insight-highlight">0.122</span> reflects balanced adversarial construction — neither party
-    systematically dominates the framing early. Cases with higher divergence tended to produce
-    <span class="insight-highlight">larger SVI gaps</span>, suggesting that divergence is itself a signal of
-    case difficulty: contested cases expose clearer strategy vulnerabilities.
-    Critically, divergence did not correlate strongly with rule validity, confirming that
-    legal accuracy is maintained regardless of argument complexity.
-  </div>
-</div>
+def render_missing_supabase() -> None:
+    st.markdown(
+        """
+        <div class="hero">
+            <span class="eyebrow">Setup Required</span>
+            <h1>ADVOCATE needs Supabase before anyone can sign in</h1>
+            <p class="hero-copy">
+                This deployment uses Supabase as the persistent user and run-history database. Add the
+                required secrets, apply the bundled SQL schema, and then reload the app.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.code(SECRETS_EXAMPLE_PATH.read_text(encoding="utf-8"), language="toml")
+    st.code(SCHEMA_PATH.read_text(encoding="utf-8"), language="sql")
 
-<div class="insight-box">
-  <div class="insight-title" style="color:#fbbf24; font-size:1rem;">4. Employer vs Employee SVI Patterns</div>
-  <div class="insight-body">
-    Across all 50 scenarios, <span class="insight-highlight">32 were ground-truth employer wins</span> and
-    <span class="insight-highlight">18 were employee wins</span>.
-    Employer SVIs ranged from <span class="insight-good">0.0</span> (Scenarios 03 & 30 — legally airtight employer positions)
-    to <span class="insight-danger">63.9%</span> (Scenario 43).
-    Employee SVIs ranged from <span class="insight-good">1.1%</span> (Scenario 41 — strongest single-party position)
-    to <span class="insight-danger">73.1%</span> (Scenario 46 — most vulnerable employee stance).
-    These extremes demonstrate the system's sensitivity to case-specific legal facts and its ability
-    to generate differentiated, scenario-appropriate vulnerability assessments rather than generic scores.
-  </div>
-</div>
 
-<div class="insight-box">
-  <div class="insight-title" style="color:#f87171; font-size:1rem;">5. Misclassified Cases — Nuanced Observations</div>
-  <div class="insight-body">
-    The three misclassified scenarios (6% of cases) likely represent edge cases where the factual
-    outcome was driven by procedural or evidentiary factors not captured in the brief-level inputs.
-    In wrongful termination law, outcomes can hinge on credibility assessments, discovery materials,
-    or jury discretion that no pre-trial simulation can fully model. The 94% accuracy ceiling
-    arguably represents a theoretical near-maximum for this class of simulation — a
-    <span class="insight-highlight">benchmark of practical viability</span>, not a failure threshold.
-  </div>
-</div>
-""", unsafe_allow_html=True)
+def render_auth_page(store: SupabaseStore) -> None:
+    ok, message = store.healthcheck()
+    left, right = st.columns([1.15, 1])
 
-    st.divider()
+    with left:
+        st.markdown(
+            """
+            <div class="hero">
+                <span class="eyebrow">Deploy Ready</span>
+                <h1>ADVOCATE now ships with persistent profiles and saved case history</h1>
+                <p class="hero-copy">
+                    Create a profile with just a username and password, sign in, and keep your case work in
+                    Supabase instead of losing it on every app restart.
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            "<div class='metric-grid'>"
+            + metric_card("Authentication", "Username + Password", "Simple profile creation for each user")
+            + metric_card("Persistence", "Supabase", "Run history and profiles survive redeploys")
+            + metric_card("Frontend", "Streamlit", "Single-script deployment flow")
+            + metric_card("Backend", "ADVOCATE Pipeline", "Existing legal analysis engine preserved")
+            + "</div>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f"""
+            <div class="panel">
+                <span class="status-pill">Supabase status</span>
+                <p class="subtle" style="margin-top:0.8rem;">
+                    {"Connection healthy." if ok else f"Connection issue: {message}"}
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    st.markdown('<div class="section-header">Ranked Evidence Summary</div>', unsafe_allow_html=True)
-    evidence = [
-        ("🥇", "Outcome Alignment", "94%", "SVI correctly predicted legal winner in 47/50 cases", "#4ade80"),
-        ("🥈", "Statistical Significance", "p=5.68×10⁻¹³", "Wilcoxon test conclusively validates the SVI metric", "#6366f1"),
-        ("🥉", "Rule Validity", "94.5% mean", "Agents construct legally accurate IRAC arguments at scale", "#a78bfa"),
-        ("4️⃣",  "SVI Effect Size", "Δ24.4pp", "24.4 percentage point gap between winner and loser SVIs", "#f59e0b"),
-        ("5️⃣",  "Scale", "50 scenarios", "Robust results across diverse wrongful termination fact patterns", "#34d399"),
-    ]
-    for icon, title, value, desc, color in evidence:
-        cols = st.columns([1, 3, 2, 6])
-        cols[0].markdown(f"<div style='font-size:1.8rem;text-align:center'>{icon}</div>", unsafe_allow_html=True)
-        cols[1].markdown(f"<div style='font-weight:700;color:#e2e8f0;padding-top:0.3rem'>{title}</div>", unsafe_allow_html=True)
-        cols[2].markdown(f"<div style='font-size:1.1rem;font-weight:800;color:{color};padding-top:0.2rem'>{value}</div>", unsafe_allow_html=True)
-        cols[3].markdown(f"<div style='color:#94a3b8;padding-top:0.35rem'>{desc}</div>", unsafe_allow_html=True)
-        st.markdown("---")
+    with right:
+        st.markdown('<div class="auth-card">', unsafe_allow_html=True)
+        st.markdown("### Sign in or create a profile")
+        sign_in_tab, sign_up_tab = st.tabs(["Sign in", "Create profile"])
 
-    st.markdown("""
-<div style="background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(168,85,247,0.08));
-            border:1px solid rgba(99,102,241,0.2);border-radius:14px;padding:1.5rem 2rem;margin-top:1.5rem;">
-  <div style="font-size:0.85rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.6rem;">
-    Research Conclusion
-  </div>
-  <div style="color:#cbd5e1;font-size:0.97rem;line-height:1.75;">
-    The ADVOCATE framework, powered by <strong style="color:#c084fc">Claude Sonnet 4.6</strong>, demonstrates that
-    large language model-based multi-agent simulation can produce <strong style="color:#93c5fd">statistically validated,
-    legally coherent, and practically useful pre-trial strategy assessments</strong> for employment law disputes.
-    The Strategy Vulnerability Index is no longer merely a heuristic — it is a
-    <strong style="color:#4ade80">quantitatively validated discriminator</strong> of legal outcome likelihood,
-    supported by evidence from 50 independent scenario evaluations and formal non-parametric statistical testing.
-  </div>
-</div>
-""", unsafe_allow_html=True)
+        with sign_in_tab:
+            with st.form("sign_in_form"):
+                username = st.text_input("Username")
+                password = st.text_input("Password", type="password")
+                submitted = st.form_submit_button("Sign in", use_container_width=True)
+            if submitted:
+                try:
+                    user = store.authenticate_user(username, password)
+                    st.session_state["auth_user"] = asdict(user)
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
+
+        with sign_up_tab:
+            with st.form("sign_up_form"):
+                new_username = st.text_input("Username", key="new_username")
+                new_password = st.text_input("Password", type="password", key="new_password")
+                submitted = st.form_submit_button("Create profile", use_container_width=True)
+            if submitted:
+                try:
+                    user = store.create_user(new_username, new_password)
+                    st.session_state["auth_user"] = asdict(user)
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
+def render_authenticated_app(store: SupabaseStore) -> None:
+    render_sidebar(store)
+    user = app_user()
+    st.markdown(
+        f"""
+        <div class="hero">
+            <span class="eyebrow">Workspace</span>
+            <h1>Welcome back, {user["username"]}</h1>
+            <p class="hero-copy">
+                Run new case analyses, compare models, revisit saved work, and inspect the bundled research
+                benchmark from a single authenticated Streamlit deployment.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    workspace_tab, history_tab, research_tab, setup_tab = st.tabs(
+        ["Workspace", "My History", "Research", "Setup"],
+    )
+
+    with workspace_tab:
+        render_workspace_tab(store)
+    with history_tab:
+        render_history_tab(store)
+    with research_tab:
+        render_research_tab()
+    with setup_tab:
+        render_setup_tab(store)
+
+
+def main() -> None:
+    st.set_page_config(
+        page_title="ADVOCATE",
+        page_icon="⚖️",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
+    inject_styles()
+    init_session_state()
+
+    if not supabase_is_configured():
+        render_missing_supabase()
+        return
+
+    store = get_store()
+    if not app_user():
+        render_auth_page(store)
+        return
+
+    render_authenticated_app(store)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,226 +1,118 @@
 # ADVOCATE
-**Adversarial Verdict Analysis through Coordinated Agent-based Trial Emulation**
 
-A multi-agent agentic AI system that simulates adversarial pre-trial argumentation for employment wrongful termination cases — and benchmarks multiple LLMs head-to-head on structured legal reasoning.
+ADVOCATE is a Streamlit application for adversarial employment-law case analysis. It now ships with:
 
----
+- Streamlit as the deployable frontend
+- Supabase as the persistent database for user profiles and saved run history
+- Username + password sign-up and sign-in
+- Saved single runs, model comparisons, and batch validations per user
+- The existing 5-agent ADVOCATE legal-analysis pipeline
 
-## What It Does
+## What changed
 
-ADVOCATE runs the same employment law case through a 5-agent pipeline and evaluates LLM outputs on four objective dimensions. The **Multi-Model Comparison** mode lets you pit GPT-4o, Claude, and Gemini against each other on the same case and see which model reasons most rigorously.
+The repo started as a research/demo project with local-only state and no user accounts. It has been refactored into a single authenticated Streamlit app in [`app.py`](app.py) backed by Supabase.
 
----
+Persistent storage now covers:
+
+- `app_users`: usernames and hashed passwords
+- `analysis_runs`: saved run history and JSON results per user
 
 ## Architecture
 
 ```
-Case Brief Input
-       │
-       ▼
-[Agent 1: Case Parser] ──► Structured JSON
-       │
-   ┌───┴───┐  (architecturally isolated — zero shared context)
-   ▼       ▼
-[Agent 2]  [Agent 3]
-Employer   Employee
-Agent      Agent
-   │       │
-   └───┬───┘
-       ▼
-[Agent 4: IRAC Evaluator] ──► Rubric scores (0–5 per claim)
-       │
-       ▼
-[Agent 5: Strategy Gap Report] ──► SVI + ranked vulnerability list
+Streamlit UI (app.py)
+    |
+    +-- Supabase auth/profile store
+    |     - app_users
+    |     - analysis_runs
+    |
+    +-- ADVOCATE pipeline
+          parse_case
+            -> employer_agent
+            -> employee_agent
+            -> irac_evaluator
+            -> gap_report
 ```
 
-**Key constraint:** Agents 2 and 3 share zero conversational context, preventing consensus collapse. Each retrieves independently from the same RAG index using differently-framed queries.
+## Required secrets
 
----
+Use either environment variables locally or Streamlit secrets in deployment.
 
-## Supported Models
+See:
 
-| Provider | Models | API Key Env Var |
-|---|---|---|
-| **OpenAI** | `gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo` | `OPENAI_API_KEY` |
-| **Anthropic** | `claude-sonnet-4-6`, `claude-opus-4-6`, `claude-haiku-4-5-20251001` | `ANTHROPIC_API_KEY` |
-| **Google** | `gemini-2.0-flash`, `gemini-1.5-pro`, `gemini-1.5-flash` | `GOOGLE_API_KEY` |
+- [`.env.example`](.env.example)
+- [`.streamlit/secrets.toml.example`](.streamlit/secrets.toml.example)
 
-You only need to set the API keys for the providers you want to use. The routing is automatic based on model ID prefix.
+Minimum required for the deployed app:
 
----
-
-## Evaluation Metrics (per model)
-
-| Metric | Description | Direction |
-|---|---|---|
-| **Overall IRAC Score** | Avg rubric score across all claims (0–5) | Higher = better |
-| **Rule Validity Rate** | % of cited cases verified in ChromaDB (cosine ≥ 0.75) | Higher = better |
-| **Adversarial Divergence** | Cosine distance between employer/employee outputs (0–1) | Higher = better |
-| **Issue Clarity** | Avg issue identification score (0–1) | Higher = better |
-| **Application Logic** | Avg rule-to-facts connection score (0–2) | Higher = better |
-| **Rebuttal Coverage** | Avg opponent-claim response score (0–1) | Higher = better |
-| **SVI** | Strategy Vulnerability Index — % of opponent claims unrebutted | Lower = better |
-| **Latency** | Total pipeline wall-clock time (seconds) | Lower = better |
-
-### IRAC Rubric Detail
-
-| Dimension | What It Checks | Score |
-|---|---|---|
-| Issue Clarity | Did the agent correctly identify the legal issue? | 0 or 1 |
-| Rule Validity | Is the cited case in the RAG index? *(programmatic)* | 0 or 1 |
-| Application Logic | Does the argument logically connect rule to facts? | 0, 1, or 2 |
-| Rebuttal Coverage | Does this claim address the opponent's key point? | 0 or 1 |
-
-**Rule Validity is the only dimension scored programmatically** — a cosine similarity search against ChromaDB ensures hallucinated citations score 0.
-
-### Overall Best Model (Composite Score)
-
-When comparing multiple models, a weighted composite score determines the overall winner:
-
-| Component | Weight |
-|---|---|
-| Overall IRAC Score | 35% |
-| Rule Validity Rate | 25% |
-| Adversarial Divergence | 20% |
-| SVI (inverted) | 10% |
-| Speed (inverted) | 10% |
-
-### Strategy Vulnerability Index (SVI)
-
+```toml
+SUPABASE_URL = "https://your-project.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY = "your-service-role-key"
+OPENAI_API_KEY = "sk-..."
 ```
-SVI = (unrebutted opponent claims / total opponent claims) × 100
-```
-Range: 0% (fully rebutted all opponent arguments) → 100% (addressed none).
 
----
+You can swap `OPENAI_API_KEY` for `ANTHROPIC_API_KEY` or `GOOGLE_API_KEY` if you want to run a different provider instead.
 
-## Quick Start
+## Supabase setup
 
-### 1. Install dependencies
+1. Create a Supabase project.
+2. Open the SQL editor.
+3. Run the SQL in [`supabase/schema.sql`](supabase/schema.sql).
+4. Add `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to your Streamlit secrets.
+
+The app uses the service-role key server-side from Streamlit. Do not expose it in client-side code.
+
+## Local development
+
+1. Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Configure API keys
+2. Copy the env template and fill in your secrets:
 
 ```bash
-cp .env.example .env
-# Edit .env — add whichever provider keys you have:
-#   OPENAI_API_KEY=sk-...
-#   ANTHROPIC_API_KEY=sk-ant-...
-#   GOOGLE_API_KEY=AIza...
+copy .env.example .env
 ```
 
-### 3. Build the RAG index (one-time, ~5 minutes)
-
-Fetches 60–80 US federal employment wrongful termination opinions from CourtListener (free, no API key) and stores them in ChromaDB.
+3. Optional: build the RAG index:
 
 ```bash
 python -m advocate.rag.build_index
 ```
 
-### 4. Launch the Streaming Apps
+4. Run the app:
 
-**Option A: The Research Dashboard**  
-Explore the visually rich, dark-themed analysis of 50 simulated scenarios:
 ```bash
 streamlit run app.py
 ```
 
-**Option B: The Multi-Model Simulation Tool**  
-Run live predictions, test custom case briefs, and benchmark different models:
-```bash
-streamlit run app_simulation.py
-```
+## Deployment
 
-### 5. Run the batch generation hook (optional)
+This repo is ready for Streamlit Community Cloud or any Streamlit-compatible host.
 
-```bash
-python run_batch_anthropic.py
-```
+Recommended deploy target:
 
----
+- Entry point: `app.py`
+- Python version: 3.10+
+- Secrets: add the values from `.streamlit/secrets.toml.example`
 
-## Project Structure
+## Main app areas
 
-```
-advocate/
-├── llm/
-│   └── client.py           # Unified OpenAI / Anthropic / Gemini routing
-├── data/
-│   ├── raw_cases/          # CourtListener JSON responses (cached)
-│   ├── processed_cases/    # Cleaned opinion text
-│   └── test_scenarios/     # 10 synthetic case briefs + ground truth outcomes
-├── rag/
-│   ├── build_index.py      # Fetch → chunk → embed → ChromaDB
-│   └── retriever.py        # Cosine similarity search + citation verification
-├── agents/
-│   ├── parser_agent.py     # Agent 1: case brief → structured JSON
-│   ├── employer_agent.py   # Agent 2: employer-side IRAC arguments
-│   ├── employee_agent.py   # Agent 3: employee-side IRAC arguments
-│   ├── irac_evaluator.py   # Agent 4: rubric scoring
-│   └── gap_report.py       # Agent 5: SVI + vulnerability list
-├── pipeline/
-│   └── advocate_graph.py   # LangGraph orchestration (model threaded through state)
-└── evaluation/
-    ├── svi_calculator.py   # SVI, Adversarial Divergence, batch metrics
-    ├── compare_models.py   # Multi-model comparison runner + composite ranking
-    └── validate.py         # Wilcoxon validation harness
-app.py                      # Streamlit Research Dashboard
-app_simulation.py           # Streamlit Multi-Model Simulation Tool
-run_batch_anthropic.py      # Hook to execute 50-scenario evaluation pipeline
-anthropic_research_results.json # Generated 50-scenario Claude data
-requirements.txt
-.env.example
-```
+- `Workspace`: run single analyses, compare models, and batch validations
+- `My History`: reopen saved runs from Supabase
+- `Research`: inspect the bundled benchmark dataset
+- `Setup`: verify Supabase, provider keys, and RAG status
 
----
+## Notes on retrieval
 
-## Dashboards & UIs
+The legal-retrieval layer still uses a local Chroma index. If no index is available, the app still runs, but retrieval-grounded citation support will be weaker. For the best experience, build the index before deployment or mount one at `CHROMA_PERSIST_PATH`.
 
-The project contains two distinct user interfaces.
+## Key files
 
-### 1. Research Dashboard (`app.py`)
-A rich, dark-themed dashboard built to explore the structured Anthropic Claude Sonnet 4.6 batched validation data (`anthropic_research_results.json`).
-
-| Tab | Description |
-|---|---|
-| **📊 Overview** | Outcome distributions, prediction accuracy, and high-level performance insights. |
-| **🎯 SVI Analysis** | Deep dive into Strategy Vulnerability Index distributions across winners/losers and Wilcoxon test stats. |
-| **↔️ Divergence** | Histogram and scatter plots analyzing Adversarial Divergence scores. |
-| **✅ Rule Validity** | Scenario-level breakdown of the 94.5% mean legal citation validity rate. |
-| **🗂️ Per-Scenario** | Comprehensive data table and heatmap visualization of all 50 test cases. |
-| **🔍 Interpretation** | Synthesized AI-quality legal and statistical findings from the SVI validation study. |
-
-### 2. Multi-Model Simulation Tool (`app_simulation.py`)
-The original interactive simulator that allows you to provide custom test cases, hook up real API keys, and run multi-agent adversarial battles live.
-
-| Tab | Description |
-|---|---|
-| **Single Model Run** | Run the pipeline with one model; see full argument detail + gap report. |
-| **Multi-Model Comparison** | Select 2–9 models, run the same case, and compare them on all metrics with charts and rankings. |
-| **Batch Validation** | Run all 10 test scenarios locally to compute Wilcoxon tests for SVI validity on the fly. |
-
----
-
-## Research Contributions
-
-1. **Adversarial Architectural Separation** — independent context window isolation prevents consensus collapse in multi-agent legal reasoning
-2. **IRAC Rubric as Agent Evaluation Framework** — structured, reproducible rubric independent of case outcome
-3. **Strategy Vulnerability Index (SVI)** — novel quantitative metric for pre-trial legal strategy weakness
-4. **Multi-Model LLM Benchmark** — objective comparison of GPT, Claude, and Gemini on structured legal argumentation using the same RAG-grounded evaluation framework
-
----
-
-## Technology Stack
-
-| Component | Tool |
-|---|---|
-| LLM Providers | OpenAI, Anthropic, Google (via unified client) |
-| Orchestration | LangGraph |
-| Vector Store | ChromaDB (local) |
-| Embeddings | all-MiniLM-L6-v2 |
-| Data Source | CourtListener REST API v4 (free) |
-| Frontend | Streamlit |
-| Language | Python 3.10+ |
+- [`app.py`](app.py)
+- [`advocate/store.py`](advocate/store.py)
+- [`advocate/auth.py`](advocate/auth.py)
+- [`advocate/settings.py`](advocate/settings.py)
+- [`supabase/schema.sql`](supabase/schema.sql)

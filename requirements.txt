@@ -22,6 +22,7 @@ plotly>=5.20.0
 
 # UI & config
 streamlit>=1.40.0
+supabase>=2.7.4
 python-dotenv>=1.0.0
 pydantic>=2.8.0
 tiktoken>=0.7.0

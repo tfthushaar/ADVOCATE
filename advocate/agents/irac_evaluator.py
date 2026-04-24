@@ -1,18 +1,18 @@
-"""
-irac_evaluator.py  —  Agent 4: IRAC Evaluator
-Scores each claim on a fixed 4-dimension rubric (max 5 pts per claim).
-Rule Validity is verified programmatically (cosine similarity ≥ 0.75).
-"""
+"""Agent 4: score claims on the fixed IRAC rubric."""
 
-import os
+from __future__ import annotations
+
 import json
+
 from dotenv import load_dotenv
+
 from advocate.llm.client import chat_completion
 from advocate.rag.retriever import verify_citation
+from advocate.settings import get_default_model
 
 load_dotenv()
 
-DEFAULT_MODEL = os.getenv("ADVOCATE_MODEL", "claude-sonnet-4-6")
+DEFAULT_MODEL = get_default_model()
 
 EVALUATOR_SYSTEM = """You are a strict, impartial legal argument evaluator.
 You score legal claims using a fixed rubric. You MUST follow the scoring rules exactly.
@@ -23,7 +23,7 @@ RUBRIC:
 - application_logic (0, 1, or 2): Award 2 if the argument explicitly and logically connects the cited rule to the specific case facts with no logical gaps. Award 1 if the connection is made but with gaps or generalities. Award 0 if no logical connection is demonstrated.
 - rebuttal_coverage (0 or 1): Award 1 if this claim directly addresses at least one of the opponent's specific claims. Award 0 if no opponent claim is addressed.
 
-NOTE: rule_validity is NOT scored by you — it is verified programmatically and provided to you.
+NOTE: rule_validity is NOT scored by you - it is verified programmatically and provided to you.
 
 Output schema:
 {
@@ -49,12 +49,12 @@ def _score_claim_llm(
     model: str,
 ) -> dict:
     opponent_summary = "\n".join(
-        f"  [{c['claim_id']}] Issue: {c.get('issue', '')} | Rule: {c.get('rule', '')}"
-        for c in opponent_claims
+        f"  [{item['claim_id']}] Issue: {item.get('issue', '')} | Rule: {item.get('rule', '')}"
+        for item in opponent_claims
     )
     prompt = (
         f"Score the following {side.upper()} claim using the rubric.\n\n"
-        f"CLAIM TO SCORE:\n"
+        "CLAIM TO SCORE:\n"
         f"  claim_id: {claim.get('claim_id')}\n"
         f"  issue: {claim.get('issue', '')}\n"
         f"  rule: {claim.get('rule', '')}\n"
@@ -63,7 +63,8 @@ def _score_claim_llm(
         f"  conclusion: {claim.get('conclusion', '')}\n\n"
         f"PROGRAMMATIC rule_validity score (already determined): {rule_validity_score}\n\n"
         "CASE FACTS (for application logic check):\n"
-        + "\n".join(f"  - {f}" for f in case.get("facts", [])) + "\n\n"
+        + "\n".join(f"  - {fact}" for fact in case.get("facts", []))
+        + "\n\n"
         f"OPPONENT CLAIMS (for rebuttal coverage check):\n{opponent_summary}\n\n"
         "Score this claim and output ONLY JSON."
     )
@@ -107,59 +108,54 @@ def _score_claim_llm(
     return scores
 
 
-def evaluate(
-    case: dict,
-    employer_args: dict,
-    employee_args: dict,
-    model: str | None = None,
-) -> dict:
-    """
-    Score all claims from both sides using the IRAC rubric.
-
-    Args:
-        case:          Parsed case dict.
-        employer_args: Employer agent output.
-        employee_args: Employee agent output.
-        model:         LLM model ID for the evaluator. Defaults to ADVOCATE_MODEL.
-    """
-    model = model or DEFAULT_MODEL
+def evaluate(case: dict, employer_args: dict, employee_args: dict, model: str | None = None) -> dict:
+    selected_model = model or DEFAULT_MODEL
     employer_claims = employer_args.get("claims", [])
     employee_claims = employee_args.get("claims", [])
 
-    def score_side(claims, side, opponent_claims):
-        scored = []
+    def score_side(claims: list[dict], side: str, opponent_claims: list[dict]) -> list[dict]:
+        scored_claims = []
         for claim in claims:
-            cited = claim.get("cited_case", "")
-            is_valid, best_score = verify_citation(cited) if cited else (False, 0.0)
-            scores = _score_claim_llm(claim, side, opponent_claims, int(is_valid), case, model)
+            cited_case = claim.get("cited_case", "")
+            is_valid, best_score = verify_citation(cited_case) if cited_case else (False, 0.0)
+            scores = _score_claim_llm(claim, side, opponent_claims, int(is_valid), case, selected_model)
             scores["citation_similarity"] = best_score
-            scored.append(scores)
-        return scored
+            scored_claims.append(scores)
+        return scored_claims
 
     employer_scores = score_side(employer_claims, "employer", employee_claims)
     employee_scores = score_side(employee_claims, "employee", employer_claims)
 
-    def avg(scores):
-        return round(sum(s.get("total_score", 0) for s in scores) / len(scores), 3) if scores else 0.0
-
-    def dim_avg(scores):
+    def average_total(scores: list[dict]) -> float:
         if not scores:
-            return {"issue_clarity": 0, "rule_validity": 0, "application_logic": 0, "rebuttal_coverage": 0}
-        n = len(scores)
-        return {k: round(sum(s.get(k, 0) for s in scores) / n, 3)
-                for k in ("issue_clarity", "rule_validity", "application_logic", "rebuttal_coverage")}
+            return 0.0
+        return round(sum(score.get("total_score", 0) for score in scores) / len(scores), 3)
 
-    emp_avg = avg(employer_scores)
-    ee_avg = avg(employee_scores)
+    def dimension_average(scores: list[dict]) -> dict[str, float]:
+        if not scores:
+            return {
+                "issue_clarity": 0,
+                "rule_validity": 0,
+                "application_logic": 0,
+                "rebuttal_coverage": 0,
+            }
+        count = len(scores)
+        return {
+            key: round(sum(score.get(key, 0) for score in scores) / count, 3)
+            for key in ("issue_clarity", "rule_validity", "application_logic", "rebuttal_coverage")
+        }
+
+    employer_average = average_total(employer_scores)
+    employee_average = average_total(employee_scores)
 
     return {
         "employer_scores": employer_scores,
         "employee_scores": employee_scores,
-        "employer_avg": emp_avg,
-        "employee_avg": ee_avg,
-        "employer_dimension_avg": dim_avg(employer_scores),
-        "employee_dimension_avg": dim_avg(employee_scores),
-        "stronger_side": "employer" if emp_avg >= ee_avg else "employee",
-        "score_delta": round(abs(emp_avg - ee_avg), 3),
-        "evaluator_model": model,
+        "employer_avg": employer_average,
+        "employee_avg": employee_average,
+        "employer_dimension_avg": dimension_average(employer_scores),
+        "employee_dimension_avg": dimension_average(employee_scores),
+        "stronger_side": "employer" if employer_average >= employee_average else "employee",
+        "score_delta": round(abs(employer_average - employee_average), 3),
+        "evaluator_model": selected_model,
     }

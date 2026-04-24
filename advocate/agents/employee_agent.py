@@ -1,19 +1,18 @@
-"""
-employee_agent.py  —  Agent 3: Employee Agent
-Produces the strongest possible legal argument FOR the employee.
+"""Agent 3: build the strongest employee-side IRAC arguments."""
 
-ARCHITECTURAL ISOLATION: shares zero context with the Employer Agent.
-"""
+from __future__ import annotations
 
-import os
 import json
+
 from dotenv import load_dotenv
+
 from advocate.llm.client import chat_completion
 from advocate.rag.retriever import retrieve
+from advocate.settings import get_default_model
 
 load_dotenv()
 
-DEFAULT_MODEL = os.getenv("ADVOCATE_MODEL", "claude-sonnet-4-6")
+DEFAULT_MODEL = get_default_model()
 
 SYSTEM_PROMPT = """You are a senior plaintiff's employment attorney with 20 years of experience.
 Your client is the EMPLOYEE (plaintiff) in a wrongful termination lawsuit.
@@ -26,9 +25,9 @@ You will be given:
 RULES:
 - Argue ONLY for the employee. Never concede points to the employer.
 - Every claim MUST cite a specific case from the retrieved opinions.
-- Structure each claim in IRAC format: Issue → Rule → Application → Conclusion.
+- Structure each claim in IRAC format: Issue -> Rule -> Application -> Conclusion.
 - Generate 3 to 5 distinct claims, each targeting a different legal theory.
-- Output ONLY valid JSON — no preamble, no explanation.
+- Output ONLY valid JSON - no preamble, no explanation.
 
 Output schema:
 {
@@ -36,12 +35,12 @@ Output schema:
   "claims": [
     {
       "claim_id": "P1",
-      "issue": "string — the specific legal issue this claim addresses",
-      "rule": "string — the legal rule, statute, or doctrine being invoked",
-      "cited_case": "string — exact case name and citation from retrieved opinions",
-      "application": "string — how this rule applies to the specific facts of this case",
-      "conclusion": "string — what this claim establishes for the employee's case",
-      "strength_note": "string — brief note on why this is a strong argument"
+      "issue": "string - the specific legal issue this claim addresses",
+      "rule": "string - the legal rule, statute, or doctrine being invoked",
+      "cited_case": "string - exact case name and citation from retrieved opinions",
+      "application": "string - how this rule applies to the specific facts of this case",
+      "conclusion": "string - what this claim establishes for the employee's case",
+      "strength_note": "string - brief note on why this is a strong argument"
     }
   ]
 }"""
@@ -57,38 +56,33 @@ def _build_retrieval_queries(case: dict) -> list[str]:
         f"retaliation protected activity employee termination unlawful {jurisdiction}",
         "pretext employer stated reason false discriminatory termination",
     ]
-    for char in characteristics[:2]:
-        queries.append(f"{char} discrimination termination employee plaintiff")
+    for characteristic in characteristics[:2]:
+        queries.append(f"{characteristic} discrimination termination employee plaintiff")
     for claim in claims[:2]:
         queries.append(f"{claim} employee rights wrongful termination case")
     return queries[:5]
 
 
 def build_employee_arguments(case: dict, model: str | None = None) -> dict:
-    """
-    Generate employee-side IRAC arguments grounded in RAG-retrieved precedents.
-
-    Args:
-        case:  Structured case dict from the Case Parser (Agent 1).
-               NOTE: Must NOT contain any output from the Employer Agent.
-        model: LLM model ID. Falls back to ADVOCATE_MODEL env var.
-    """
-    model = model or DEFAULT_MODEL
+    selected_model = model or DEFAULT_MODEL
 
     queries = _build_retrieval_queries(case)
-    retrieved_chunks, seen_cases = [], set()
+    retrieved_chunks: list[dict] = []
+    seen_cases: set[str] = set()
+
     for query in queries:
-        for r in retrieve(query, n_results=3, side="employee"):
-            if r["case_name"] not in seen_cases:
-                retrieved_chunks.append(r)
-                seen_cases.add(r["case_name"])
+        for result in retrieve(query, n_results=3, side="employee"):
+            if result["case_name"] not in seen_cases:
+                retrieved_chunks.append(result)
+                seen_cases.add(result["case_name"])
         if len(retrieved_chunks) >= 12:
             break
 
-    context_str = "\n---\n".join(
-        f"[CASE {i+1}] {c['case_name']} ({c['date_filed']})\n"
-        f"Citation: {c['citation']}\nExcerpt: {c['text'][:600]}"
-        for i, c in enumerate(retrieved_chunks[:10])
+    context = "\n---\n".join(
+        f"[CASE {index + 1}] {chunk['case_name']} ({chunk['date_filed']})\n"
+        f"Citation: {chunk['citation']}\n"
+        f"Excerpt: {chunk['text'][:600]}"
+        for index, chunk in enumerate(retrieved_chunks[:10])
     )
 
     case_summary = (
@@ -97,10 +91,14 @@ def build_employee_arguments(case: dict, model: str | None = None) -> dict:
         f"Employment Type: {case.get('employment_type', 'Unknown')}\n"
         f"Stated Termination Reason: {case.get('termination_reason', 'Unknown')}\n"
         f"Jurisdiction: {case.get('jurisdiction', 'Unknown')}\n"
-        "Key Facts:\n" + "\n".join(f"  - {f}" for f in case.get("facts", [])) + "\n"
-        "Evidence Available:\n" + "\n".join(f"  - {e}" for e in case.get("evidence", [])) + "\n"
-        "Employee's Legal Claims:\n" + "\n".join(f"  - {c}" for c in case.get("employee_claims", [])) + "\n"
-        "Protected Characteristics at Issue:\n" + "\n".join(f"  - {p}" for p in case.get("protected_characteristics", []))
+        "Key Facts:\n"
+        + "\n".join(f"  - {fact}" for fact in case.get("facts", []))
+        + "\nEvidence Available:\n"
+        + "\n".join(f"  - {item}" for item in case.get("evidence", []))
+        + "\nEmployee's Legal Claims:\n"
+        + "\n".join(f"  - {claim}" for claim in case.get("employee_claims", []))
+        + "\nProtected Characteristics at Issue:\n"
+        + "\n".join(f"  - {item}" for item in case.get("protected_characteristics", []))
     )
 
     raw, latency = chat_completion(
@@ -110,13 +108,13 @@ def build_employee_arguments(case: dict, model: str | None = None) -> dict:
                 "role": "user",
                 "content": (
                     f"CASE SUMMARY:\n{case_summary}\n\n"
-                    f"RETRIEVED COURT OPINIONS:\n{context_str}\n\n"
+                    f"RETRIEVED COURT OPINIONS:\n{context}\n\n"
                     "Generate 3-5 strong IRAC-structured employee plaintiff claims in JSON. "
                     "Cite cases from the retrieved opinions above. Output ONLY JSON."
                 ),
             },
         ],
-        model=model,
+        model=selected_model,
         max_tokens=4096,
     )
 
@@ -126,13 +124,13 @@ def build_employee_arguments(case: dict, model: str | None = None) -> dict:
 
     try:
         result = json.loads(raw)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Employee Agent ({model}) returned invalid JSON: {e}\nRaw:\n{raw}") from e
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Employee Agent ({selected_model}) returned invalid JSON: {exc}\nRaw:\n{raw}") from exc
 
     result["retrieved_sources"] = [
-        {"case_name": c["case_name"], "citation": c["citation"], "score": c["score"]}
-        for c in retrieved_chunks[:10]
+        {"case_name": chunk["case_name"], "citation": chunk["citation"], "score": chunk["score"]}
+        for chunk in retrieved_chunks[:10]
     ]
-    result["model"] = model
+    result["model"] = selected_model
     result["latency_s"] = latency
     return result

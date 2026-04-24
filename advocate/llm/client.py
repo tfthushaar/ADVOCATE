@@ -1,24 +1,31 @@
-"""
-client.py  —  Unified LLM abstraction layer
-Routes chat completion requests to the correct provider based on model prefix.
+"""Unified LLM abstraction layer for OpenAI, Anthropic, and Gemini."""
 
-Supported models:
-  OpenAI   : gpt-4o, gpt-4o-mini, gpt-4-turbo, o1-*, o3-*
-  Anthropic: claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5-20251001
-  Google   : gemini-2.0-flash, gemini-1.5-pro, gemini-1.5-flash
-             (uses the native google-generativeai SDK)
+from __future__ import annotations
 
-Environment variables required per provider:
-  OPENAI_API_KEY
-  ANTHROPIC_API_KEY
-  GOOGLE_API_KEY
-"""
-
-import os
-import time
-import random
 import functools
+import random
+import time
+
 from dotenv import load_dotenv
+
+from advocate.settings import available_provider_env_key, get_setting
+
+load_dotenv()
+
+OPENAI_MODELS = {
+    "gpt-4o",
+    "gpt-4o-mini",
+    "gpt-4-turbo",
+    "gpt-4",
+    "o1",
+    "o1-mini",
+    "o3",
+    "o3-mini",
+}
+
+ANTHROPIC_PREFIX = "claude"
+GEMINI_PREFIX = "gemini"
+
 
 def with_retry_and_backoff(func):
     @functools.wraps(func)
@@ -28,32 +35,34 @@ def with_retry_and_backoff(func):
         for attempt in range(max_retries):
             try:
                 return func(*args, **kwargs)
-            except Exception as e:
-                err_str = str(e).lower()
-                is_rate_limit = any(kw in err_str for kw in ["429", "rate limit", "resource exhausted", "quota", "too many requests", "503", "502"])
-                if is_rate_limit and attempt < max_retries - 1:
-                    sleep_time = base_delay * (2 ** attempt) + random.uniform(0, 1)
-                    # Extract model name for logging
-                    model_arg = kwargs.get('model')
-                    if not model_arg and len(args) > 1:
-                        model_arg = args[1]
-                    print(f"[Rate Limit] Hit. Retrying {model_arg} in {sleep_time:.1f}s (Attempt {attempt+1}/{max_retries})...")
-                    time.sleep(sleep_time)
-                else:
+            except Exception as exc:
+                error_text = str(exc).lower()
+                is_retryable = any(
+                    token in error_text
+                    for token in (
+                        "429",
+                        "rate limit",
+                        "resource exhausted",
+                        "quota",
+                        "too many requests",
+                        "502",
+                        "503",
+                    )
+                )
+                if not is_retryable or attempt == max_retries - 1:
                     raise
+
+                model_arg = kwargs.get("model")
+                if not model_arg and len(args) > 1:
+                    model_arg = args[1]
+                sleep_time = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                print(
+                    f"[Rate Limit] Retrying {model_arg} in {sleep_time:.1f}s "
+                    f"(attempt {attempt + 1}/{max_retries})...",
+                )
+                time.sleep(sleep_time)
+
     return wrapper
-
-load_dotenv()
-
-# ─── Provider routing ─────────────────────────────────────────────────────────
-
-OPENAI_MODELS = {
-    "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4",
-    "o1", "o1-mini", "o3", "o3-mini",
-}
-
-ANTHROPIC_PREFIX = "claude"
-GEMINI_PREFIX = "gemini"
 
 
 def _is_openai(model: str) -> bool:
@@ -68,28 +77,16 @@ def _is_gemini(model: str) -> bool:
     return model.startswith(GEMINI_PREFIX)
 
 
-# ─── Public API ───────────────────────────────────────────────────────────────
+def provider_env_key_for_model(model_id: str) -> str | None:
+    info = AVAILABLE_MODELS.get(model_id)
+    if info:
+        return info["env_key"]
+    return available_provider_env_key(model_id)
 
-def chat_completion(
-    messages: list[dict],
-    model: str,
-    max_tokens: int = 4096,
-) -> tuple[str, float]:
-    """
-    Unified chat completion interface.
 
-    Args:
-        messages:   List of {"role": "system"|"user"|"assistant", "content": str}.
-        model:      Model identifier string (determines provider automatically).
-        max_tokens: Max tokens in the response.
-
-    Returns:
-        (response_text, latency_seconds)
-
-    Raises:
-        ValueError: If the model prefix is unrecognised or the API key is missing.
-    """
-    t0 = time.perf_counter()
+def chat_completion(messages: list[dict], model: str, max_tokens: int = 4096) -> tuple[str, float]:
+    """Run a chat completion and return response text plus latency."""
+    started_at = time.perf_counter()
 
     if _is_anthropic(model):
         text = _anthropic_completion(messages, model, max_tokens)
@@ -99,20 +96,20 @@ def chat_completion(
         text = _openai_completion(messages, model, max_tokens)
     else:
         raise ValueError(
-            f"Unrecognised model '{model}'. "
-            "Prefix must be 'gpt-', 'claude-', or 'gemini-'."
+            f"Unrecognised model '{model}'. Prefix must be 'gpt-', 'claude-', or 'gemini-'.",
         )
 
-    latency = round(time.perf_counter() - t0, 2)
-    return text, latency
+    return text, round(time.perf_counter() - started_at, 2)
 
 
 @with_retry_and_backoff
 def _openai_completion(messages: list[dict], model: str, max_tokens: int) -> str:
     from openai import OpenAI
-    api_key = os.getenv("OPENAI_API_KEY")
+
+    api_key = get_setting("OPENAI_API_KEY")
     if not api_key:
         raise ValueError("OPENAI_API_KEY is not set.")
+
     client = OpenAI(api_key=api_key)
     response = client.chat.completions.create(
         model=model,
@@ -125,19 +122,20 @@ def _openai_completion(messages: list[dict], model: str, max_tokens: int) -> str
 @with_retry_and_backoff
 def _anthropic_completion(messages: list[dict], model: str, max_tokens: int) -> str:
     import anthropic
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+
+    api_key = get_setting("ANTHROPIC_API_KEY")
     if not api_key:
         raise ValueError("ANTHROPIC_API_KEY is not set.")
-    client = anthropic.Anthropic(api_key=api_key)
 
-    # Split system message from user/assistant turns
+    client = anthropic.Anthropic(api_key=api_key)
     system = ""
-    turns = []
-    for m in messages:
-        if m["role"] == "system":
-            system = m["content"]
+    turns: list[dict] = []
+
+    for message in messages:
+        if message["role"] == "system":
+            system = message["content"]
         else:
-            turns.append(m)
+            turns.append(message)
 
     response = client.messages.create(
         model=model,
@@ -150,39 +148,30 @@ def _anthropic_completion(messages: list[dict], model: str, max_tokens: int) -> 
 
 @with_retry_and_backoff
 def _gemini_completion(messages: list[dict], model: str, max_tokens: int) -> str:
-    """
-    Uses the native google-generativeai SDK.
-    Converts the standard {role, content} message list into Gemini's format:
-      - "system" role → system_instruction on the model
-      - "user" / "assistant" turns → chat history
-    """
     import google.generativeai as genai
     from google.generativeai.types import GenerationConfig
 
-    api_key = os.getenv("GOOGLE_API_KEY")
+    api_key = get_setting("GOOGLE_API_KEY")
     if not api_key:
         raise ValueError("GOOGLE_API_KEY is not set.")
 
     genai.configure(api_key=api_key)
 
-    # Extract system instruction and build history + final user message
     system_instruction = None
     history = []
-    last_user_msg = ""
+    last_user_message = ""
 
-    for m in messages:
-        role = m["role"]
-        content = m["content"]
+    for message in messages:
+        role = message["role"]
+        content = message["content"]
         if role == "system":
             system_instruction = content
         elif role == "user":
-            last_user_msg = content
-            # Add previous user turns to history if there are assistant responses after them
+            last_user_message = content
         elif role == "assistant":
-            # Pair the preceding user message into history as a completed turn
-            if last_user_msg:
-                history.append({"role": "user", "parts": [last_user_msg]})
-                last_user_msg = ""
+            if last_user_message:
+                history.append({"role": "user", "parts": [last_user_message]})
+                last_user_message = ""
             history.append({"role": "model", "parts": [content]})
 
     gemini_model = genai.GenerativeModel(
@@ -193,22 +182,19 @@ def _gemini_completion(messages: list[dict], model: str, max_tokens: int) -> str
 
     if history:
         chat = gemini_model.start_chat(history=history)
-        response = chat.send_message(last_user_msg)
+        response = chat.send_message(last_user_message)
     else:
-        response = gemini_model.generate_content(last_user_msg)
+        response = gemini_model.generate_content(last_user_message)
 
     return response.text.strip()
 
 
-# ─── Model catalogue (for UI) ─────────────────────────────────────────────────
-
 AVAILABLE_MODELS: dict[str, dict] = {
-    # OpenAI
     "gpt-4o": {
         "provider": "OpenAI",
         "display": "GPT-4o",
         "env_key": "OPENAI_API_KEY",
-        "description": "OpenAI flagship multimodal model",
+        "description": "High-capability OpenAI model",
     },
     "gpt-4o-mini": {
         "provider": "OpenAI",
@@ -220,83 +206,78 @@ AVAILABLE_MODELS: dict[str, dict] = {
         "provider": "OpenAI",
         "display": "GPT-4 Turbo",
         "env_key": "OPENAI_API_KEY",
-        "description": "High-intelligence OpenAI model",
+        "description": "OpenAI large-context model",
     },
-    # Anthropic
     "claude-sonnet-4-6": {
         "provider": "Anthropic",
         "display": "Claude Sonnet 4.6",
         "env_key": "ANTHROPIC_API_KEY",
-        "description": "Anthropic balanced performance model",
+        "description": "Balanced Anthropic model",
     },
     "claude-opus-4-6": {
         "provider": "Anthropic",
         "display": "Claude Opus 4.6",
         "env_key": "ANTHROPIC_API_KEY",
-        "description": "Anthropic most capable model",
+        "description": "Highest-capability Anthropic model",
     },
     "claude-haiku-4-5-20251001": {
         "provider": "Anthropic",
         "display": "Claude Haiku 4.5",
         "env_key": "ANTHROPIC_API_KEY",
-        "description": "Anthropic fastest, most compact model",
+        "description": "Fast Anthropic model",
     },
-    # Google Gemini — use names exactly as returned by genai.list_models()
     "gemini-2.0-flash": {
         "provider": "Google",
         "display": "Gemini 2.0 Flash",
         "env_key": "GOOGLE_API_KEY",
-        "description": "Google latest fast multimodal model",
+        "description": "Fast Gemini model",
     },
     "gemini-2.0-flash-lite": {
         "provider": "Google",
         "display": "Gemini 2.0 Flash Lite",
         "env_key": "GOOGLE_API_KEY",
-        "description": "Google lightest, fastest model",
+        "description": "Lightweight Gemini model",
     },
     "gemini-1.5-pro": {
         "provider": "Google",
         "display": "Gemini 1.5 Pro",
         "env_key": "GOOGLE_API_KEY",
-        "description": "Google high-capability long-context model",
+        "description": "Long-context Gemini model",
     },
     "gemini-1.5-flash-latest": {
         "provider": "Google",
         "display": "Gemini 1.5 Flash",
         "env_key": "GOOGLE_API_KEY",
-        "description": "Google fast, efficient model",
+        "description": "Efficient Gemini model",
     },
 }
 
 
 def models_for_provider(provider: str) -> list[str]:
-    return [k for k, v in AVAILABLE_MODELS.items() if v["provider"] == provider]
+    return [model_id for model_id, info in AVAILABLE_MODELS.items() if info["provider"] == provider]
 
 
 def is_model_available(model_id: str) -> bool:
-    """Returns True if the required API key env var is set for this model."""
-    info = AVAILABLE_MODELS.get(model_id)
-    if not info:
+    env_key = provider_env_key_for_model(model_id)
+    if not env_key:
         return False
-    return bool(os.getenv(info["env_key"]))
+    return bool(get_setting(env_key))
 
 
 def list_gemini_models() -> list[str]:
-    """
-    Query the Gemini API and return names of models that support generateContent.
-    Useful for debugging — call this to find valid model IDs for the current API key.
-    Returns [] if GOOGLE_API_KEY is not set or the call fails.
-    """
+    """Return Gemini models available to the configured API key."""
     try:
         import google.generativeai as genai
-        api_key = os.getenv("GOOGLE_API_KEY")
+
+        api_key = get_setting("GOOGLE_API_KEY")
         if not api_key:
             return []
+
         genai.configure(api_key=api_key)
         return [
-            m.name.replace("models/", "")
-            for m in genai.list_models()
-            if "generateContent" in m.supported_generation_methods
+            model.name.replace("models/", "")
+            for model in genai.list_models()
+            if "generateContent" in model.supported_generation_methods
         ]
     except Exception:
         return []
