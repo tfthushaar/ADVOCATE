@@ -21,7 +21,7 @@ from advocate.evaluation.svi_calculator import (
 from advocate.llm.client import AVAILABLE_MODELS, is_model_available, provider_env_key_for_model
 from advocate.pipeline.advocate_graph import run_pipeline
 from advocate.rag.retriever import collection_size, index_ready
-from advocate.settings import get_default_model, supabase_is_configured
+from advocate.settings import get_default_model, get_setting, supabase_is_configured
 from advocate.store import SupabaseStore
 
 APP_ROOT = Path(__file__).parent
@@ -29,6 +29,11 @@ SCENARIOS_DIR = APP_ROOT / "advocate" / "data" / "test_scenarios"
 RESEARCH_RESULTS_PATH = APP_ROOT / "anthropic_research_results.json"
 SECRETS_EXAMPLE_PATH = APP_ROOT / ".streamlit" / "secrets.toml.example"
 SCHEMA_PATH = APP_ROOT / "supabase" / "schema.sql"
+PROVIDER_SETTINGS = (
+    ("OPENAI_API_KEY", "OpenAI"),
+    ("ANTHROPIC_API_KEY", "Anthropic"),
+    ("GOOGLE_API_KEY", "Google"),
+)
 
 
 def inject_styles() -> None:
@@ -250,6 +255,8 @@ def init_session_state() -> None:
     st.session_state.setdefault("latest_single_result", None)
     st.session_state.setdefault("latest_comparison", None)
     st.session_state.setdefault("latest_batch_result", None)
+    for env_key, _provider in PROVIDER_SETTINGS:
+        st.session_state.setdefault(env_key, "")
 
 
 @st.cache_resource(show_spinner=False)
@@ -278,6 +285,11 @@ def app_user() -> dict | None:
 
 def configured_models() -> list[str]:
     return [model_id for model_id in AVAILABLE_MODELS if is_model_available(model_id)]
+
+
+def clear_session_provider_keys() -> None:
+    for env_key, _provider in PROVIDER_SETTINGS:
+        st.session_state[env_key] = ""
 
 
 def default_model_index(models: list[str]) -> int:
@@ -741,11 +753,7 @@ def render_research_tab() -> None:
 def render_setup_tab(store: SupabaseStore) -> None:
     ok, message = store.healthcheck()
     provider_rows = []
-    for env_key, provider in (
-        ("OPENAI_API_KEY", "OpenAI"),
-        ("ANTHROPIC_API_KEY", "Anthropic"),
-        ("GOOGLE_API_KEY", "Google"),
-    ):
+    for env_key, provider in PROVIDER_SETTINGS:
         configured = any(
             provider_env_key_for_model(model_id) == env_key and is_model_available(model_id)
             for model_id in AVAILABLE_MODELS
@@ -945,6 +953,30 @@ def render_sidebar(store: SupabaseStore) -> None:
             st.session_state["latest_single_result"] = None
             st.session_state["latest_comparison"] = None
             st.session_state["latest_batch_result"] = None
+            st.rerun()
+
+        st.divider()
+        st.markdown("### Session API Keys")
+        st.caption("Paste your own provider keys here to use them for this session only.")
+        for env_key, provider in PROVIDER_SETTINGS:
+            session_value = st.session_state.get(env_key, "")
+            using_default = not session_value and bool(get_setting(env_key))
+            note = (
+                "Using this session key"
+                if session_value
+                else ("Using deployment default" if using_default else "Not configured")
+            )
+            st.text_input(
+                f"{provider} API Key",
+                key=env_key,
+                type="password",
+                placeholder=f"Paste a {provider} key for this session only",
+                help=f"Overrides the deployment-level {env_key} for your current session only.",
+            )
+            st.caption(note)
+
+        if st.button("Clear Session API Keys", use_container_width=True):
+            clear_session_provider_keys()
             st.rerun()
 
         st.divider()

@@ -16,6 +16,19 @@ _CHROMA_CANDIDATES = (
 )
 
 
+def _streamlit_session_value(name: str) -> Any | None:
+    try:
+        import streamlit as st
+
+        if name in st.session_state:
+            value = st.session_state[name]
+            if value not in (None, ""):
+                return value
+    except Exception:
+        return None
+    return None
+
+
 def _streamlit_secret(name: str) -> Any | None:
     try:
         import streamlit as st
@@ -28,7 +41,11 @@ def _streamlit_secret(name: str) -> Any | None:
 
 
 def get_setting(name: str, default: Any | None = None) -> Any | None:
-    """Read a setting from environment variables first, then Streamlit secrets."""
+    """Read a setting from session state, env vars, then Streamlit secrets."""
+    session_value = _streamlit_session_value(name)
+    if session_value not in (None, ""):
+        return session_value
+
     value = os.getenv(name)
     if value not in (None, ""):
         return value
